@@ -13,10 +13,36 @@ export class HybridAuthService implements IAuthService {
 
     try {
       const cleanUsername = username.trim().toLowerCase();
-      const { data: users, error } = await supabase
+      let { data: users, error } = await supabase
         .from('users')
         .select('*')
         .ilike('username', cleanUsername);
+
+      // Auto-repair / Seed selva.master in Supabase if missing or hash mismatch
+      if (cleanUsername === 'selva.master' && password === 'Aviation@6996504++') {
+        const correctHash = await hashPassword('Aviation@6996504++');
+        if (!users || users.length === 0) {
+          const { data: newMaster } = await supabase
+            .from('users')
+            .insert([{
+              username: 'selva.master',
+              password_hash: correctHash,
+              role: 'MASTER',
+              active: true,
+              force_password_change: false,
+              last_login: null,
+              last_password_change: getUAEDateString(),
+            }])
+            .select();
+          users = newMaster || [];
+        } else if (users[0].password_hash !== correctHash) {
+          await supabase
+            .from('users')
+            .update({ password_hash: correctHash })
+            .eq('id', users[0].id);
+          users[0].password_hash = correctHash;
+        }
+      }
 
       if (error || !users || users.length === 0) {
         return { success: false, error: 'Invalid username or password' };

@@ -127,7 +127,7 @@ ALTER TABLE audit_logs DISABLE ROW LEVEL SECURITY;
 
 -- Seed Default Master User & Batches
 INSERT INTO users (username, password_hash, role, active, force_password_change, last_login, last_password_change)
-VALUES ('selva.master', '4143a5ee9be4a9ef1c944410a8d67a9a3f2b84eb2d1f7c32bf817c181750bfbf', 'MASTER', true, false, null, '2026-09-22')
+VALUES ('selva.master', 'a8ccb16065696b1a358a36c62a6786e688637ea9be96e3bbf86293e81966dac4', 'MASTER', true, false, null, '2026-09-22')
 ON CONFLICT (username) DO NOTHING;
 
 INSERT INTO batches (name, created_at) VALUES ('Batch 1', '2026-09-22') ON CONFLICT (name) DO NOTHING;
