@@ -122,6 +122,14 @@ export interface Setting {
   value: any;
 }
 
+export interface GeofenceSettings {
+  enabled: boolean;
+  centerLatitude: number;
+  centerLongitude: number;
+  loginRadiusMeters: number;
+  signOutRadiusMeters: number;
+}
+
 export interface TraineeLogSummary {
   srNo: number;
   traineeId: string;

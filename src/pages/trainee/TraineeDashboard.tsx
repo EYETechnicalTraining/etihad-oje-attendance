@@ -4,6 +4,8 @@ import { traineeService } from '../../services/hybridTraineeService';
 import { attendanceService } from '../../services/hybridAttendanceService';
 import { allocationService } from '../../services/hybridAllocationService';
 import { taskService } from '../../services/hybridTaskService';
+import { settingsService } from '../../services/hybridSettingsService';
+import { getDeviceLocation, checkGeofence } from '../../utils/geofence';
 import { getUAEDateString, getUAETimeString, formatDisplayDate } from '../../utils/timezone';
 import { Modal } from '../../components/common/Modal';
 import { Notification } from '../../components/common/Notification';
@@ -82,11 +84,42 @@ export const TraineeDashboard: React.FC<TraineeDashboardProps> = ({ currentUser 
     setTimeout(() => setRefreshing(false), 500);
   };
 
-  // Instant 1-Click Attendance Logging
+  // Instant Attendance Logging with Attendance Log In Geofence Check
   const handleLogAttendanceSimple = async () => {
     if (!trainee) return;
     setLoading(true);
     setNotification(null);
+
+    // Geofence check for Attendance Log In
+    const geoSettings = await settingsService.getGeofenceSettings();
+    if (geoSettings.enabled) {
+      const locRes = await getDeviceLocation();
+      if (!locRes.success || !locRes.coords) {
+        setLoading(false);
+        setNotification({
+          type: 'error',
+          text: locRes.error || 'GPS Location permission required to log attendance.',
+        });
+        return;
+      }
+
+      const check = checkGeofence(
+        locRes.coords.latitude,
+        locRes.coords.longitude,
+        geoSettings.centerLatitude,
+        geoSettings.centerLongitude,
+        geoSettings.loginRadiusMeters
+      );
+
+      if (!check.isWithin) {
+        setLoading(false);
+        setNotification({
+          type: 'error',
+          text: `🛑 Attendance Log In Restricted: You are currently ${check.distanceKm} km away from Etihad Engineering facility. Attendance Log In is allowed within ${geoSettings.loginRadiusMeters} meters.`,
+        });
+        return;
+      }
+    }
 
     const logRes = await attendanceService.logAttendance(
       trainee.traineeId,
@@ -159,11 +192,42 @@ export const TraineeDashboard: React.FC<TraineeDashboardProps> = ({ currentUser 
     }
   };
 
-  // Daily Sign-Out
+  // Daily Sign-Out with Daily Sign Out Geofence Check
   const handleSignOutSubmit = async () => {
     if (!trainee) return;
     setLoading(true);
     setNotification(null);
+
+    // Geofence check for Daily Sign Out
+    const geoSettings = await settingsService.getGeofenceSettings();
+    if (geoSettings.enabled) {
+      const locRes = await getDeviceLocation();
+      if (!locRes.success || !locRes.coords) {
+        setLoading(false);
+        setNotification({
+          type: 'error',
+          text: locRes.error || 'GPS Location permission required to sign out.',
+        });
+        return;
+      }
+
+      const check = checkGeofence(
+        locRes.coords.latitude,
+        locRes.coords.longitude,
+        geoSettings.centerLatitude,
+        geoSettings.centerLongitude,
+        geoSettings.signOutRadiusMeters
+      );
+
+      if (!check.isWithin) {
+        setLoading(false);
+        setNotification({
+          type: 'error',
+          text: `🛑 Daily Sign Out Restricted: You are currently ${check.distanceKm} km away from Etihad Engineering facility. Daily Sign Out is allowed within ${geoSettings.signOutRadiusMeters} meters.`,
+        });
+        return;
+      }
+    }
 
     const res = await taskService.submitSignOut(trainee.traineeId);
     setLoading(false);
@@ -349,7 +413,7 @@ export const TraineeDashboard: React.FC<TraineeDashboardProps> = ({ currentUser 
           ) : (
             <div>
               <p style={{ fontSize: '0.9rem', color: '#475569', marginBottom: '1.5rem' }}>
-                Click below to record your official attendance timestamp for today.
+                Click below to record your official attendance timestamp for today. Location will be verified against Etihad Engineering premises.
               </p>
 
               <button
@@ -359,7 +423,7 @@ export const TraineeDashboard: React.FC<TraineeDashboardProps> = ({ currentUser 
                 disabled={loading}
               >
                 <CalendarCheck size={20} />
-                <span>{loading ? 'Recording Attendance...' : 'Log Attendance'}</span>
+                <span>{loading ? 'Verifying Location & Logging...' : 'Log Attendance'}</span>
               </button>
             </div>
           )}
@@ -511,7 +575,7 @@ export const TraineeDashboard: React.FC<TraineeDashboardProps> = ({ currentUser 
           ) : (
             <div>
               <p style={{ fontSize: '1rem', color: '#0A192F', fontWeight: 600, marginBottom: '1.5rem' }}>
-                Are you sure you want to sign out for today?
+                Are you sure you want to sign out for today? Location will be verified against Etihad Engineering premises.
               </p>
 
               <div style={{ display: 'flex', justifyContent: 'center', gap: '1rem' }}>
@@ -530,7 +594,7 @@ export const TraineeDashboard: React.FC<TraineeDashboardProps> = ({ currentUser 
                   disabled={loading}
                 >
                   <LogOut size={16} />
-                  <span>{loading ? 'Signing Out...' : 'Confirm Sign-Out'}</span>
+                  <span>{loading ? 'Verifying Location & Signing Out...' : 'Confirm Sign-Out'}</span>
                 </button>
               </div>
             </div>

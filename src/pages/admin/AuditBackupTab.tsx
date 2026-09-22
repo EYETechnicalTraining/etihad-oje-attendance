@@ -1,20 +1,35 @@
 import React, { useState, useEffect } from 'react';
-import { AuditLog, Batch } from '../../types';
+import { AuditLog, Batch, GeofenceSettings } from '../../types';
 import { auditService } from '../../services/hybridAuditService';
 import { backupService } from '../../services/hybridBackupService';
 import { traineeService } from '../../services/hybridTraineeService';
 import { attendanceService } from '../../services/hybridAttendanceService';
+import { settingsService, DEFAULT_GEOFENCE_SETTINGS } from '../../services/hybridSettingsService';
 import { getUAEDateString } from '../../utils/timezone';
 import { exportToCSV } from '../../utils/csv';
 import { generateMatrixExcelReport } from '../../utils/excelExporter';
 import { Notification } from '../../components/common/Notification';
 import { Modal } from '../../components/common/Modal';
-import { Download, Upload, FileSpreadsheet, ShieldCheck, AlertTriangle, Calendar, Filter } from 'lucide-react';
+import {
+  Download,
+  Upload,
+  FileSpreadsheet,
+  ShieldCheck,
+  AlertTriangle,
+  MapPin,
+  Save,
+  HelpCircle,
+} from 'lucide-react';
 
 export const AuditBackupTab: React.FC = () => {
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [batches, setBatches] = useState<Batch[]>([]);
   const [notification, setNotification] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  // Geofence Settings State
+  const [geofence, setGeofence] = useState<GeofenceSettings>(DEFAULT_GEOFENCE_SETTINGS);
+  const [savingGeofence, setSavingGeofence] = useState(false);
+  const [showMapGuide, setShowMapGuide] = useState(false);
 
   // Backup import state
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
@@ -32,13 +47,36 @@ export const AuditBackupTab: React.FC = () => {
   const loadData = async () => {
     const list = await auditService.getAuditLogs();
     const bList = await traineeService.getBatches();
+    const geo = await settingsService.getGeofenceSettings();
     setLogs(list);
     setBatches(bList);
+    setGeofence(geo);
   };
 
   useEffect(() => {
     loadData();
   }, []);
+
+  const handleSaveGeofence = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSavingGeofence(true);
+    setNotification(null);
+
+    const res = await settingsService.saveGeofenceSettings(geofence);
+    setSavingGeofence(false);
+
+    if (res.success) {
+      setNotification({
+        type: 'success',
+        text: `Geofence settings updated successfully! Attendance Log In Radius: ${geofence.loginRadiusMeters}m • Daily Sign Out Radius: ${geofence.signOutRadiusMeters}m.`,
+      });
+    } else {
+      setNotification({
+        type: 'error',
+        text: res.error || 'Failed to save geofence settings.',
+      });
+    }
+  };
 
   const handleExportJSON = async () => {
     try {
@@ -157,13 +195,122 @@ export const AuditBackupTab: React.FC = () => {
       <div style={{ marginBottom: '1.25rem' }}>
         <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: '#0A192F' }}>Data Management & Custom Excel Reports</h2>
         <p style={{ fontSize: '0.85rem', color: '#64748B' }}>
-          Generate multi-date matrix Excel spreadsheets with custom date range and batch filtering, JSON database backups, and system audit history.
+          Configure GPS Geofencing radii, generate multi-date matrix Excel spreadsheets, backup/restore database, and view system audit history.
         </p>
       </div>
 
       {notification && <Notification type={notification.type} message={notification.text} onClose={() => setNotification(null)} />}
 
-      {/* NEW: Matrix Excel Generator Section */}
+      {/* NEW: Geofence Location Restriction Control Card */}
+      <div className="card" style={{ borderLeft: '5px solid #102A43', marginBottom: '1.5rem' }}>
+        <div className="card-header">
+          <span className="card-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <MapPin size={20} color="#C5A059" />
+            <span>GPS Geofencing Location Restriction Settings</span>
+          </span>
+          <button
+            type="button"
+            className="btn btn-outline btn-sm"
+            onClick={() => setShowMapGuide(!showMapGuide)}
+          >
+            <HelpCircle size={14} />
+            <span>{showMapGuide ? 'Hide Guide' : 'Google Maps Guide'}</span>
+          </button>
+        </div>
+
+        {showMapGuide && (
+          <div style={{ background: '#F1F5F9', border: '1px solid #CBD5E1', padding: '1rem', borderRadius: '8px', marginBottom: '1.25rem', fontSize: '0.85rem' }}>
+            <strong style={{ color: '#0A192F' }}>📍 How to find your exact Hangar Coordinates from Google Maps:</strong>
+            <ol style={{ marginLeft: '1.25rem', marginTop: '0.5rem', lineHeight: '1.6' }}>
+              <li>Open <strong>Google Maps</strong> on your phone or computer.</li>
+              <li>Search or zoom in to your exact Etihad Engineering Hangar / Facility building.</li>
+              <li><strong>Right-click</strong> (on PC) or <strong>press and hold</strong> (on phone) directly on the facility center point.</li>
+              <li>Copy the numbers shown (e.g. <code>24.426700, 54.651100</code>).
+                <br />• First number is <strong>Latitude</strong> (e.g. <code>24.4267</code>)
+                <br />• Second number is <strong>Longitude</strong> (e.g. <code>54.6511</code>)
+              </li>
+              <li>Set separate radiuses in meters (e.g. <strong>500m</strong> for Attendance Log In and <strong>1000m / 1km</strong> for Daily Sign Out).</li>
+            </ol>
+          </div>
+        )}
+
+        <form onSubmit={handleSaveGeofence}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
+            <div className="form-group">
+              <label className="form-label">Geofencing Restriction</label>
+              <select
+                className="form-control"
+                value={geofence.enabled ? 'true' : 'false'}
+                onChange={(e) => setGeofence({ ...geofence, enabled: e.target.value === 'true' })}
+              >
+                <option value="true">● ENABLED (Location Verified)</option>
+                <option value="false">○ DISABLED (No GPS Restriction)</option>
+              </select>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Center Latitude</label>
+              <input
+                type="number"
+                step="any"
+                className="form-control"
+                value={geofence.centerLatitude}
+                onChange={(e) => setGeofence({ ...geofence, centerLatitude: parseFloat(e.target.value) || 0 })}
+                required
+              />
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Center Longitude</label>
+              <input
+                type="number"
+                step="any"
+                className="form-control"
+                value={geofence.centerLongitude}
+                onChange={(e) => setGeofence({ ...geofence, centerLongitude: parseFloat(e.target.value) || 0 })}
+                required
+              />
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Attendance Log In Radius (Meters)</label>
+              <input
+                type="number"
+                min="10"
+                max="50000"
+                className="form-control"
+                value={geofence.loginRadiusMeters}
+                onChange={(e) => setGeofence({ ...geofence, loginRadiusMeters: parseInt(e.target.value) || 500 })}
+                required
+              />
+              <span style={{ fontSize: '0.75rem', color: '#64748B' }}>e.g. 500 = 0.5 km radius</span>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Daily Sign Out Radius (Meters)</label>
+              <input
+                type="number"
+                min="10"
+                max="50000"
+                className="form-control"
+                value={geofence.signOutRadiusMeters}
+                onChange={(e) => setGeofence({ ...geofence, signOutRadiusMeters: parseInt(e.target.value) || 1000 })}
+                required
+              />
+              <span style={{ fontSize: '0.75rem', color: '#64748B' }}>e.g. 1000 = 1.0 km radius</span>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '0.75rem' }}>
+            <button type="submit" className="btn btn-navy btn-md" disabled={savingGeofence}>
+              <Save size={16} />
+              <span>{savingGeofence ? 'Saving Settings...' : 'Save Geofence Settings'}</span>
+            </button>
+          </div>
+        </form>
+      </div>
+
+      {/* Matrix Excel Generator Section */}
       <div className="card" style={{ borderLeft: '5px solid #C5A059', marginBottom: '1.5rem' }}>
         <div className="card-header">
           <span className="card-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
