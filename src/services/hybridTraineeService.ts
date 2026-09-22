@@ -20,6 +20,7 @@ export class HybridTraineeService implements ITraineeService {
       program: t.program,
       active: t.active,
       createdAt: t.created_at,
+      enrollmentSelfie: t.enrollment_selfie,
     }));
   }
 
@@ -38,6 +39,7 @@ export class HybridTraineeService implements ITraineeService {
       program: t.program,
       active: t.active,
       createdAt: t.created_at,
+      enrollmentSelfie: t.enrollment_selfie,
     };
   }
 
@@ -194,6 +196,17 @@ export class HybridTraineeService implements ITraineeService {
       };
     } catch (err: any) {
       return { success: false, error: err.message || 'Failed to save remark' };
+    }
+  }
+
+  async saveEnrollmentSelfie(traineeId: string, selfieBase64: string): Promise<{ success: boolean; error?: string }> {
+    if (!isSupabaseConfigured || !supabase) return await dexieTrainee.saveEnrollmentSelfie(traineeId, selfieBase64);
+
+    try {
+      await supabase.from('trainees').update({ enrollment_selfie: selfieBase64 }).eq('trainee_id', traineeId);
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Failed to save enrollment selfie' };
     }
   }
 }

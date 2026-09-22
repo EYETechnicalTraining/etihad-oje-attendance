@@ -32,6 +32,7 @@ export interface ITraineeService {
 
   getRemarks(traineeId: string): Promise<Remark[]>;
   addRemark(traineeId: string, remarkText: string, author: string): Promise<{ success: boolean; remark?: Remark; error?: string }>;
+  saveEnrollmentSelfie(traineeId: string, selfieBase64: string): Promise<{ success: boolean; error?: string }>;
 }
 
 export interface IAttendanceService {

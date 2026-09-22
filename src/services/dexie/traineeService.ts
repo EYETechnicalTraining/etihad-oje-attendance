@@ -201,6 +201,18 @@ export class DexieTraineeService implements ITraineeService {
       return { success: false, error: err.message || 'Failed to save remark' };
     }
   }
+
+  async saveEnrollmentSelfie(traineeId: string, selfieBase64: string): Promise<{ success: boolean; error?: string }> {
+    try {
+      const trainee = await db.trainees.where('traineeId').equals(traineeId).first();
+      if (!trainee) return { success: false, error: 'Trainee not found' };
+
+      await db.trainees.update(trainee.id!, { enrollmentSelfie: selfieBase64 });
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Failed to save enrollment selfie' };
+    }
+  }
 }
 
 export const traineeService = new DexieTraineeService();
