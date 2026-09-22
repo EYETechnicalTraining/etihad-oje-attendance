@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { User } from '../types';
 import { authService } from '../services/hybridAuthService';
+import { isSupabaseConfigured } from '../services/supabase/client';
 import { Notification } from '../components/common/Notification';
-import { Plane, Lock, User as UserIcon, ShieldAlert } from 'lucide-react';
+import { Plane, Lock, User as UserIcon, ShieldAlert, Cloud, Database } from 'lucide-react';
 
 interface LoginProps {
   onLoginSuccess: (user: User) => void;
@@ -47,6 +48,17 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
           </div>
           <h1>OJE TRAINEE MANAGEMENT SYSTEM</h1>
           <p>Etihad Engineering Technical Training</p>
+          <div style={{ marginTop: '0.75rem', display: 'flex', justifyContent: 'center' }}>
+            {isSupabaseConfigured ? (
+              <span className="badge badge-present" style={{ fontSize: '0.75rem', gap: '0.35rem' }}>
+                <Cloud size={13} /> CENTRAL CLOUD DATABASE ACTIVE
+              </span>
+            ) : (
+              <span className="badge badge-late" style={{ fontSize: '0.75rem', gap: '0.35rem' }}>
+                <Database size={13} /> LOCAL OFFLINE STORAGE
+              </span>
+            )}
+          </div>
         </div>
 
         {error && <Notification type="error" message={error} onClose={() => setError(null)} />}
