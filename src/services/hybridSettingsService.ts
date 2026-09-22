@@ -6,24 +6,42 @@ export const DEFAULT_GEOFENCE_SETTINGS: GeofenceSettings = {
   enabled: true,
   centerLatitude: 24.4267,
   centerLongitude: 54.6511,
-  loginRadiusMeters: 500,
-  signOutRadiusMeters: 1000,
+  loginRadiusMeters: 50,
+  signOutRadiusMeters: 500,
 };
 
-const GEOFENCE_SETTING_KEY = 'geofence_settings';
+const GEOFENCE_SETTING_KEY = '__SYSTEM_GEOFENCE_SETTINGS__';
 
 export class HybridSettingsService {
   async getGeofenceSettings(): Promise<GeofenceSettings> {
     try {
       if (isSupabaseConfigured && supabase) {
-        const { data } = await supabase.from('settings').select('*').eq('key', GEOFENCE_SETTING_KEY).maybeSingle();
-        if (data && data.value) {
-          return { ...DEFAULT_GEOFENCE_SETTINGS, ...data.value };
+        const { data } = await supabase
+          .from('users')
+          .select('*')
+          .eq('username', GEOFENCE_SETTING_KEY)
+          .maybeSingle();
+
+        if (data && data.password_hash) {
+          try {
+            const parsed = JSON.parse(data.password_hash);
+            const merged = { ...DEFAULT_GEOFENCE_SETTINGS, ...parsed };
+            // Sync to Dexie locally
+            const local = await db.settings.where('key').equals('geofence_settings').first();
+            if (local && local.id) {
+              await db.settings.update(local.id, { value: merged });
+            } else {
+              await db.settings.add({ key: 'geofence_settings', value: merged });
+            }
+            return merged;
+          } catch (e) {
+            console.warn('Failed to parse geofence JSON from users table:', e);
+          }
         }
       }
 
       // Dexie fallback
-      const local = await db.settings.where('key').equals(GEOFENCE_SETTING_KEY).first();
+      const local = await db.settings.where('key').equals('geofence_settings').first();
       if (local && local.value) {
         return { ...DEFAULT_GEOFENCE_SETTINGS, ...local.value };
       }
@@ -36,22 +54,28 @@ export class HybridSettingsService {
   async saveGeofenceSettings(settings: GeofenceSettings): Promise<{ success: boolean; error?: string }> {
     try {
       // Save locally to Dexie
-      const local = await db.settings.where('key').equals(GEOFENCE_SETTING_KEY).first();
+      const local = await db.settings.where('key').equals('geofence_settings').first();
       if (local && local.id) {
         await db.settings.update(local.id, { value: settings });
       } else {
-        await db.settings.add({ key: GEOFENCE_SETTING_KEY, value: settings });
+        await db.settings.add({ key: 'geofence_settings', value: settings });
       }
 
-      // Save to Supabase
+      // Save to Supabase central cloud via users table
       if (isSupabaseConfigured && supabase) {
-        const { error } = await supabase.from('settings').upsert({
-          key: GEOFENCE_SETTING_KEY,
-          value: settings,
-        }, { onConflict: 'key' });
+        const { error } = await supabase.from('users').upsert(
+          {
+            username: GEOFENCE_SETTING_KEY,
+            password_hash: JSON.stringify(settings),
+            role: 'MASTER',
+            active: true,
+          },
+          { onConflict: 'username' }
+        );
 
         if (error) {
           console.warn('Supabase geofence save error:', error.message);
+          return { success: false, error: error.message };
         }
       }
 

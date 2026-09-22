@@ -90,7 +90,7 @@ export const TraineeDashboard: React.FC<TraineeDashboardProps> = ({ currentUser 
     setLoading(true);
     setNotification(null);
 
-    // Geofence check for Attendance Log In
+    // Fetch fresh geofence settings from central cloud database
     const geoSettings = await settingsService.getGeofenceSettings();
     if (geoSettings.enabled) {
       const locRes = await getDeviceLocation();
@@ -115,7 +115,7 @@ export const TraineeDashboard: React.FC<TraineeDashboardProps> = ({ currentUser 
         setLoading(false);
         setNotification({
           type: 'error',
-          text: `🛑 Attendance Log In Restricted: You are currently ${check.distanceKm} km away from Etihad Engineering facility. Attendance Log In is allowed within ${geoSettings.loginRadiusMeters} meters.`,
+          text: `🛑 Attendance Log In Restricted: You are currently ${check.formattedDistance} away from Etihad Engineering facility. Attendance Log In is allowed within ${geoSettings.loginRadiusMeters} meters.`,
         });
         return;
       }
@@ -198,7 +198,7 @@ export const TraineeDashboard: React.FC<TraineeDashboardProps> = ({ currentUser 
     setLoading(true);
     setNotification(null);
 
-    // Geofence check for Daily Sign Out
+    // Fetch fresh geofence settings from central cloud database
     const geoSettings = await settingsService.getGeofenceSettings();
     if (geoSettings.enabled) {
       const locRes = await getDeviceLocation();
@@ -223,7 +223,7 @@ export const TraineeDashboard: React.FC<TraineeDashboardProps> = ({ currentUser 
         setLoading(false);
         setNotification({
           type: 'error',
-          text: `🛑 Daily Sign Out Restricted: You are currently ${check.distanceKm} km away from Etihad Engineering facility. Daily Sign Out is allowed within ${geoSettings.signOutRadiusMeters} meters.`,
+          text: `🛑 Daily Sign Out Restricted: You are currently ${check.formattedDistance} away from Etihad Engineering facility. Daily Sign Out is allowed within ${geoSettings.signOutRadiusMeters} meters.`,
         });
         return;
       }

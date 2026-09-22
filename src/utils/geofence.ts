@@ -12,6 +12,18 @@ export interface GeofenceResult {
   isWithin: boolean;
   distanceMeters: number;
   distanceKm: string;
+  formattedDistance: string;
+}
+
+/**
+ * Format meters cleanly for user alert display (e.g. "4,200 meters (4.20 km)")
+ */
+export function formatDistanceDisplay(meters: number): string {
+  if (meters >= 1000) {
+    const km = (meters / 1000).toFixed(2);
+    return `${meters.toLocaleString()} meters (${km} km)`;
+  }
+  return `${meters} meters`;
 }
 
 /**
@@ -92,11 +104,13 @@ export function checkGeofence(
 ): GeofenceResult {
   const distanceMeters = calculateDistanceMeters(currentLat, currentLon, centerLat, centerLon);
   const distanceKm = (distanceMeters / 1000).toFixed(2);
+  const formattedDistance = formatDistanceDisplay(distanceMeters);
   const isWithin = distanceMeters <= radiusMeters;
 
   return {
     isWithin,
     distanceMeters,
     distanceKm,
+    formattedDistance,
   };
 }
