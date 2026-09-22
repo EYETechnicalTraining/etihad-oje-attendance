@@ -28,17 +28,61 @@ export function getUAEDateString(date?: Date): string {
 }
 
 /**
- * Returns formatted display date, e.g., "22 September 2026"
+ * Returns formatted display date, e.g., "Tuesday, 22 September 2026"
  */
-export function formatDisplayDate(dateString: string): string {
+export function formatDisplayDate(dateString: string, includeDayOfWeek: boolean = true): string {
   if (!dateString) return '';
   const [year, month, day] = dateString.split('-').map(Number);
   const dateObj = new Date(year, month - 1, day);
+  
+  if (includeDayOfWeek) {
+    return dateObj.toLocaleDateString('en-GB', {
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+    });
+  }
+
   return dateObj.toLocaleDateString('en-GB', {
     day: 'numeric',
     month: 'long',
     year: 'numeric',
   });
+}
+
+/**
+ * Checks if a given date string is a weekend (Saturday or Sunday)
+ */
+export function isWeekend(dateString: string): boolean {
+  if (!dateString) return false;
+  const [year, month, day] = dateString.split('-').map(Number);
+  const dateObj = new Date(year, month - 1, day);
+  const dayOfWeek = dateObj.getDay();
+  return dayOfWeek === 0 || dayOfWeek === 6; // 0 = Sunday, 6 = Saturday
+}
+
+/**
+ * Generates array of YYYY-MM-DD strings for a given start and end date range
+ */
+export function getDatesInRange(startDateStr: string, endDateStr: string): string[] {
+  const dates: string[] = [];
+  const [sYear, sMonth, sDay] = startDateStr.split('-').map(Number);
+  const [eYear, eMonth, eDay] = endDateStr.split('-').map(Number);
+
+  const start = new Date(sYear, sMonth - 1, sDay);
+  const end = new Date(eYear, eMonth - 1, eDay);
+
+  const current = new Date(start);
+  while (current <= end) {
+    const year = current.getFullYear();
+    const month = String(current.getMonth() + 1).padStart(2, '0');
+    const day = String(current.getDate()).padStart(2, '0');
+    dates.push(`${year}-${month}-${day}`);
+    current.setDate(current.getDate() + 1);
+  }
+
+  return dates;
 }
 
 /**
@@ -58,15 +102,10 @@ export function getUAETimeString(date?: Date, includeSeconds = false): string {
 
 /**
  * Calculates attendance status automatically based on login timestamp (UAE time)
- * Rules:
- * - On or BEFORE 07:30:00 AM -> PRESENT
- * - AFTER 07:30:00 AM up to 08:00:00 AM -> LATE TO WORK
- * - AFTER 08:00:00 AM (if trainee logs in after 8am) -> LATE TO WORK (Transitions from No Show)
  */
 export function calculateAttendanceStatus(dateObj?: Date): 'Present' | 'Late to Work' {
   const now = dateObj || new Date();
   
-  // Format hours and minutes in 24h format for UAE time
   const options: Intl.DateTimeFormatOptions = {
     timeZone: UAE_TIMEZONE,
     hour: '2-digit',

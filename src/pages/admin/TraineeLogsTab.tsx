@@ -8,6 +8,7 @@ import {
   formatDisplayDate,
   getPreviousDateString,
   getNextDateString,
+  isWeekend,
 } from '../../utils/timezone';
 import { Badge } from '../../components/common/Badge';
 import { Modal } from '../../components/common/Modal';
@@ -21,6 +22,7 @@ import {
   Smartphone,
   Shield,
   Plane,
+  Coffee,
 } from 'lucide-react';
 
 export const TraineeLogsTab: React.FC = () => {
@@ -69,6 +71,8 @@ export const TraineeLogsTab: React.FC = () => {
     setTaskModal({ open: true, traineeId, name });
   };
 
+  const selectedIsWeekend = isWeekend(selectedDate);
+
   return (
     <div>
       <div style={{ marginBottom: '1rem', textAlign: 'center' }}>
@@ -84,9 +88,9 @@ export const TraineeLogsTab: React.FC = () => {
           <ChevronLeft size={18} />
         </button>
 
-        <div className="date-display">
+        <div className="date-display" style={{ minWidth: '300px' }}>
           <CalendarIcon size={20} color="#C5A059" />
-          <span>{formatDisplayDate(selectedDate)}</span>
+          <span>{formatDisplayDate(selectedDate, true)}</span>
         </div>
 
         <button onClick={handleNextDay} className="btn btn-outline btn-sm">
@@ -101,6 +105,30 @@ export const TraineeLogsTab: React.FC = () => {
           onChange={(e) => e.target.value && setSelectedDate(e.target.value)}
         />
       </div>
+
+      {/* Weekend Banner */}
+      {selectedIsWeekend && (
+        <div
+          style={{
+            background: '#EFF6FF',
+            border: '1px solid #BFDBFE',
+            color: '#1E40AF',
+            padding: '0.75rem 1rem',
+            borderRadius: '8px',
+            marginBottom: '1rem',
+            textAlign: 'center',
+            fontWeight: 700,
+            fontSize: '0.9rem',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '0.5rem',
+          }}
+        >
+          <Coffee size={18} color="#2563EB" />
+          <span>WEEKEND (No logs on weekend)</span>
+        </div>
+      )}
 
       {/* Trainee Logs Table */}
       <div className="table-responsive">
