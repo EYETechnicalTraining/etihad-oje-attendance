@@ -160,6 +160,51 @@ export class HybridAttendanceService implements IAttendanceService {
 
     return logs;
   }
+
+  async updateTraineeAttendanceStatus(
+    traineeId: string,
+    date: string,
+    newStatus: AttendanceStatus
+  ): Promise<{ success: boolean; error?: string }> {
+    if (!isSupabaseConfigured || !supabase) {
+      return await dexieAttendance.updateTraineeAttendanceStatus(traineeId, date, newStatus);
+    }
+
+    try {
+      const existing = await this.getTraineeAttendanceForDate(traineeId, date);
+
+      if (existing) {
+        const { error } = await supabase
+          .from('attendance')
+          .update({ status: newStatus })
+          .eq('trainee_id', traineeId)
+          .eq('date', date);
+
+        if (error) return { success: false, error: error.message };
+      } else {
+        const loginTime = `Manual (${newStatus})`;
+        const createdAt = new Date().toISOString();
+
+        const { error } = await supabase.from('attendance').insert([{
+          trainee_id: traineeId,
+          date,
+          login_time: loginTime,
+          status: newStatus,
+          authentication_method: 'Password Fallback',
+          created_at: createdAt,
+        }]);
+
+        if (error) return { success: false, error: error.message };
+      }
+
+      // Sync Dexie locally
+      await dexieAttendance.updateTraineeAttendanceStatus(traineeId, date, newStatus);
+
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Failed to update attendance status' };
+    }
+  }
 }
 
 export const attendanceService = new HybridAttendanceService();

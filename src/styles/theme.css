@@ -350,6 +350,36 @@ body {
   border-color: #BFDBFE;
 }
 
+.badge-leave {
+  background-color: #F0F9FF;
+  color: #0369A1;
+  border-color: #BAE6FD;
+}
+
+.badge-sick {
+  background-color: #FDF4FF;
+  color: #C026D3;
+  border-color: #F5D0FE;
+}
+
+.badge-military {
+  background-color: #F1F5F9;
+  color: #334155;
+  border-color: #CBD5E1;
+}
+
+.badge-training {
+  background-color: #EEF2FF;
+  color: #4338CA;
+  border-color: #C7D2FE;
+}
+
+.badge-standdown {
+  background-color: #FFF7ED;
+  color: #C2410C;
+  border-color: #FFEDD5;
+}
+
 /* Trainee Mobile Cards Grid */
 .trainee-grid {
   display: grid;

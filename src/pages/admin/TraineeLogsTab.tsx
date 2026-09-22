@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { TraineeLogSummary, Allocation, TaskCount, User } from '../../types';
+import { TraineeLogSummary, Allocation, TaskCount, User, AttendanceStatus } from '../../types';
 import { attendanceService } from '../../services/hybridAttendanceService';
 import { allocationService } from '../../services/hybridAllocationService';
 import { taskService } from '../../services/hybridTaskService';
@@ -19,15 +19,15 @@ import {
   Compass,
   CheckSquare,
   UserCheck,
-  Smartphone,
-  Shield,
-  Plane,
   Coffee,
+  Save,
 } from 'lucide-react';
 
 export const TraineeLogsTab: React.FC = () => {
   const [selectedDate, setSelectedDate] = useState<string>(getUAEDateString());
   const [logs, setLogs] = useState<TraineeLogSummary[]>([]);
+  const [statusEdits, setStatusEdits] = useState<Record<string, AttendanceStatus>>({});
+  const [savingId, setSavingId] = useState<string | null>(null);
 
   // Modals state
   const [allocationModal, setAllocationModal] = useState<{ open: boolean; traineeId: string; name: string } | null>(null);
@@ -43,6 +43,12 @@ export const TraineeLogsTab: React.FC = () => {
   const loadLogs = async (dateStr: string) => {
     const data = await attendanceService.getTraineeLogsForDate(dateStr);
     setLogs(data);
+    // Initialize statusEdits with current statuses
+    const initialEdits: Record<string, AttendanceStatus> = {};
+    data.forEach((l) => {
+      initialEdits[l.traineeId] = l.status;
+    });
+    setStatusEdits(initialEdits);
   };
 
   useEffect(() => {
@@ -55,6 +61,18 @@ export const TraineeLogsTab: React.FC = () => {
 
   const handleNextDay = () => {
     setSelectedDate(getNextDateString(selectedDate));
+  };
+
+  const handleStatusChange = (traineeId: string, newStatus: AttendanceStatus) => {
+    setStatusEdits((prev) => ({ ...prev, [traineeId]: newStatus }));
+  };
+
+  const handleSaveStatus = async (traineeId: string, fallbackStatus: AttendanceStatus) => {
+    const targetStatus = statusEdits[traineeId] || fallbackStatus;
+    setSavingId(traineeId);
+    await attendanceService.updateTraineeAttendanceStatus(traineeId, selectedDate, targetStatus);
+    await loadLogs(selectedDate);
+    setSavingId(null);
   };
 
   // Open Allocation History Modal
@@ -78,7 +96,7 @@ export const TraineeLogsTab: React.FC = () => {
       <div style={{ marginBottom: '1rem', textAlign: 'center' }}>
         <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: '#0A192F' }}>Trainee Attendance & Activity Logs</h2>
         <p style={{ fontSize: '0.85rem', color: '#64748B' }}>
-          Daily attendance status, workstation allocations, task completions, and daily sign-out timestamps.
+          Automated daily attendance status (Present, Late, No Show) with manual status override options (Leave, Sick, Military, Training, Stand Down).
         </p>
       </div>
 
@@ -138,7 +156,7 @@ export const TraineeLogsTab: React.FC = () => {
               <th>Sr. No</th>
               <th>Staff No</th>
               <th>Name</th>
-              <th>Status</th>
+              <th>Status & Manual Override</th>
               <th>Log In Time</th>
               <th>Sign Out Time</th>
               <th style={{ textAlign: 'center' }}>Allocation</th>
@@ -159,8 +177,51 @@ export const TraineeLogsTab: React.FC = () => {
                   <td>{log.srNo}</td>
                   <td style={{ fontWeight: 700, color: '#0A192F' }}>{log.traineeId}</td>
                   <td style={{ fontWeight: 600 }}>{log.name}</td>
-                  <td>
-                    <Badge status={log.status} />
+                  <td style={{ minWidth: '220px' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                      <div>
+                        <Badge status={log.status} />
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                        <select
+                          className="form-control"
+                          style={{
+                            padding: '0.2rem 0.4rem',
+                            fontSize: '0.75rem',
+                            height: '28px',
+                            width: '135px',
+                            borderColor: '#CBD5E1',
+                            borderRadius: '4px',
+                          }}
+                          value={statusEdits[log.traineeId] !== undefined ? statusEdits[log.traineeId] : log.status}
+                          onChange={(e) => handleStatusChange(log.traineeId, e.target.value as AttendanceStatus)}
+                        >
+                          <option value="Present">Present</option>
+                          <option value="Late to Work">Late to Work</option>
+                          <option value="No Show">No Show</option>
+                          <option value="Annual Leave">Annual Leave</option>
+                          <option value="Sick Leave">Sick Leave</option>
+                          <option value="Military Services">Military Services</option>
+                          <option value="Training">Training</option>
+                          <option value="Stand Down">Stand Down</option>
+                        </select>
+                        <button
+                          onClick={() => handleSaveStatus(log.traineeId, log.status)}
+                          disabled={savingId === log.traineeId}
+                          className="btn btn-navy btn-sm"
+                          style={{
+                            padding: '0.2rem 0.5rem',
+                            fontSize: '0.72rem',
+                            height: '28px',
+                            lineHeight: 1,
+                          }}
+                          title="Save Status Override"
+                        >
+                          <Save size={12} />
+                          <span>{savingId === log.traineeId ? 'Saving...' : 'Save'}</span>
+                        </button>
+                      </div>
+                    </div>
                   </td>
                   <td style={{ fontWeight: 600, color: '#1E293B' }}>{log.loginTime}</td>
                   <td style={{ fontWeight: 600, color: '#475569' }}>{log.signOutTime}</td>

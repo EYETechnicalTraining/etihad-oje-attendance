@@ -1,6 +1,15 @@
 export type UserRole = 'MASTER' | 'TRAINEE';
 
-export type AttendanceStatus = 'Present' | 'Late to Work' | 'No Show';
+export type AttendanceStatus =
+  | 'Present'
+  | 'Late to Work'
+  | 'No Show'
+  | 'Annual Leave'
+  | 'Sick Leave'
+  | 'Military Services'
+  | 'Training'
+  | 'Stand Down'
+  | 'Weekend';
 
 export type InsideOutside = 'Inside' | 'Outside';
 

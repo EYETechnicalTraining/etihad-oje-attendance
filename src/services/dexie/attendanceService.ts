@@ -138,6 +138,47 @@ export class DexieAttendanceService implements IAttendanceService {
 
     return logs;
   }
+
+  async updateTraineeAttendanceStatus(
+    traineeId: string,
+    date: string,
+    newStatus: AttendanceStatus
+  ): Promise<{ success: boolean; error?: string }> {
+    try {
+      const existing = await this.getTraineeAttendanceForDate(traineeId, date);
+      const now = new Date();
+      const timeStr = getUAETimeString(now, true);
+
+      if (existing) {
+        await db.attendance
+          .where('[traineeId+date]')
+          .equals([traineeId, date])
+          .modify({ status: newStatus });
+      } else {
+        await db.attendance.add({
+          traineeId,
+          date,
+          loginTime: `Manual (${newStatus})`,
+          status: newStatus,
+          authenticationMethod: 'Password Fallback',
+          createdAt: new Date().toISOString(),
+        });
+      }
+
+      await db.auditLogs.add({
+        user: 'MASTER',
+        action: `Manually updated status for ${traineeId} on ${date} to ${newStatus}`,
+        date,
+        time: timeStr,
+        relatedTrainee: traineeId,
+        timestamp: Date.now(),
+      });
+
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Failed to update status' };
+    }
+  }
 }
 
 export const attendanceService = new DexieAttendanceService();
