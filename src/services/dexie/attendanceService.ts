@@ -23,7 +23,7 @@ export class DexieAttendanceService implements IAttendanceService {
 
   async logAttendance(
     traineeId: string,
-    authMethod: 'WebAuthn/Passkey' | 'Password Fallback'
+    authMethod: 'Biometric Passkey (Fingerprint/PIN)' | 'Face Verification Selfie' | 'Password Fallback' | 'WebAuthn/Passkey'
   ): Promise<{ success: boolean; attendance?: Attendance; error?: string }> {
     try {
       const today = getUAEDateString();

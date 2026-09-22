@@ -50,7 +50,7 @@ export class HybridAttendanceService implements IAttendanceService {
 
   async logAttendance(
     traineeId: string,
-    authMethod: 'WebAuthn/Passkey' | 'Password Fallback'
+    authMethod: 'Biometric Passkey (Fingerprint/PIN)' | 'Face Verification Selfie' | 'Password Fallback' | 'WebAuthn/Passkey'
   ): Promise<{ success: boolean; attendance?: Attendance; error?: string }> {
     if (!isSupabaseConfigured || !supabase) return await dexieAttendance.logAttendance(traineeId, authMethod);
 

@@ -37,7 +37,7 @@ export interface ITraineeService {
 export interface IAttendanceService {
   getDailyAttendance(date: string): Promise<Attendance[]>;
   getTraineeAttendanceForDate(traineeId: string, date: string): Promise<Attendance | null>;
-  logAttendance(traineeId: string, authMethod: 'WebAuthn/Passkey' | 'Password Fallback'): Promise<{ success: boolean; attendance?: Attendance; error?: string }>;
+  logAttendance(traineeId: string, authMethod: 'Biometric Passkey (Fingerprint/PIN)' | 'Face Verification Selfie' | 'Password Fallback' | 'WebAuthn/Passkey'): Promise<{ success: boolean; attendance?: Attendance; error?: string }>;
   getTraineeLogsForDate(date: string): Promise<TraineeLogSummary[]>;
 }
 

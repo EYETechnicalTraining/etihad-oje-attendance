@@ -1,13 +1,26 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { User } from '../../types';
-import { LogOut, Shield, UserCheck, Plane } from 'lucide-react';
+import { LogOut, RefreshCw, Plane } from 'lucide-react';
 
 interface HeaderProps {
   user: User | null;
   onLogout: () => void;
+  onRefresh?: () => void;
 }
 
-export const Header: React.FC<HeaderProps> = ({ user, onLogout }) => {
+export const Header: React.FC<HeaderProps> = ({ user, onLogout, onRefresh }) => {
+  const [refreshing, setRefreshing] = useState(false);
+
+  const handleRefreshClick = async () => {
+    setRefreshing(true);
+    if (onRefresh) {
+      await onRefresh();
+    } else {
+      window.location.reload();
+    }
+    setTimeout(() => setRefreshing(false), 600);
+  };
+
   return (
     <header className="app-header">
       <div className="header-brand">
@@ -28,6 +41,17 @@ export const Header: React.FC<HeaderProps> = ({ user, onLogout }) => {
               {user.role === 'MASTER' ? 'Administrator' : `Trainee ID: ${user.traineeId}`}
             </div>
           </div>
+
+          <button
+            onClick={handleRefreshClick}
+            className="btn btn-gold btn-sm"
+            title="Refresh Central Database Data"
+            disabled={refreshing}
+          >
+            <RefreshCw size={15} className={refreshing ? 'spin-icon' : ''} />
+            <span>{refreshing ? 'Refreshing...' : 'Refresh Data'}</span>
+          </button>
+
           <button
             onClick={onLogout}
             className="btn btn-outline btn-sm"

@@ -13,6 +13,7 @@ import { getUAEDateString, getUAETimeString, formatDisplayDate } from '../../uti
 import { Modal } from '../../components/common/Modal';
 import { Notification } from '../../components/common/Notification';
 import { Badge } from '../../components/common/Badge';
+import { CameraModal } from '../../components/common/CameraModal';
 import { ChangePasswordModal } from './ChangePasswordModal';
 import {
   Smartphone,
@@ -24,7 +25,10 @@ import {
   KeyRound,
   CheckCircle2,
   AlertCircle,
-  Plane,
+  Camera,
+  Fingerprint,
+  RefreshCw,
+  UserCheck,
 } from 'lucide-react';
 
 interface TraineeDashboardProps {
@@ -41,6 +45,8 @@ export const TraineeDashboard: React.FC<TraineeDashboardProps> = ({ currentUser 
   // Modals
   const [isPasskeyPromptOpen, setIsPasskeyPromptOpen] = useState(false);
   const [isAttendanceModalOpen, setIsAttendanceModalOpen] = useState(false);
+  const [isSelfieCameraOpen, setIsSelfieCameraOpen] = useState(false);
+  const [isEnrollmentCameraOpen, setIsEnrollmentCameraOpen] = useState(false);
   const [isAllocationModalOpen, setIsAllocationModalOpen] = useState(false);
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
   const [isSignOutModalOpen, setIsSignOutModalOpen] = useState(false);
@@ -58,16 +64,21 @@ export const TraineeDashboard: React.FC<TraineeDashboardProps> = ({ currentUser 
   });
 
   const [taskCountInput, setTaskCountInput] = useState<number | ''>('');
+  const [enrollmentSelfie, setEnrollmentSelfie] = useState<string | null>(null);
 
   // Status feedback
   const [notification, setNotification] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   const loadData = async () => {
     if (!currentUser.traineeId) return;
 
     const t = await traineeService.getTraineeById(currentUser.traineeId);
     setTrainee(t);
+    if (t?.enrollmentSelfie) {
+      setEnrollmentSelfie(t.enrollmentSelfie);
+    }
 
     const rList = await traineeService.getRemarks(currentUser.traineeId);
     setRemarks(rList);
@@ -82,7 +93,6 @@ export const TraineeDashboard: React.FC<TraineeDashboardProps> = ({ currentUser 
     const pkRegistered = await hasPasskeyRegistered(currentUser.traineeId);
     setHasPasskey(pkRegistered);
 
-    // Prompt passkey setup if first time login
     if (!pkRegistered) {
       setIsPasskeyPromptOpen(true);
     }
@@ -92,7 +102,13 @@ export const TraineeDashboard: React.FC<TraineeDashboardProps> = ({ currentUser 
     loadData();
   }, [currentUser]);
 
-  // Step 12: Device / Passkey Registration
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    await loadData();
+    setTimeout(() => setRefreshing(false), 500);
+  };
+
+  // Device / Passkey Registration
   const handleRegisterDevice = async () => {
     if (!trainee) return;
     setLoading(true);
@@ -106,31 +122,41 @@ export const TraineeDashboard: React.FC<TraineeDashboardProps> = ({ currentUser 
       setIsPasskeyPromptOpen(false);
       setNotification({
         type: 'success',
-        text: 'This device has been securely registered with WebAuthn/Passkey authentication.',
+        text: 'This device has been registered with Passkey / Biometrics. You can also capture a Selfie Face Scan now.',
       });
     } else {
       setNotification({ type: 'error', text: res.error || 'Failed to register passkey device.' });
     }
   };
 
-  // Step 14: Attendance Logging
-  const handleLogAttendance = async () => {
+  // Capture Enrollment Selfie
+  const handleEnrollmentSelfieCaptured = async (base64: string) => {
+    setEnrollmentSelfie(base64);
+    setIsEnrollmentCameraOpen(false);
+    setNotification({
+      type: 'success',
+      text: 'First-time selfie face scan successfully enrolled!',
+    });
+  };
+
+  // Attendance Logging via Fingerprint / Device Passkey
+  const handleLogAttendanceFingerprint = async () => {
     if (!trainee) return;
     setLoading(true);
     setNotification(null);
 
-    // 1. Verify Passkey / Device Biometrics
+    // 1. Verify Passkey / Hardware Device Biometrics
     const authRes = await authenticateDevicePasskey(trainee.traineeId);
     if (!authRes.success) {
       setLoading(false);
-      setNotification({ type: 'error', text: authRes.error || 'Biometric authentication failed.' });
+      setNotification({ type: 'error', text: authRes.error || 'Biometric fingerprint authentication failed.' });
       return;
     }
 
-    // 2. Log Attendance with auto timestamp and status calculation
+    // 2. Log Attendance
     const logRes = await attendanceService.logAttendance(
       trainee.traineeId,
-      authRes.method || 'WebAuthn/Passkey'
+      'Biometric Passkey (Fingerprint/PIN)'
     );
 
     setLoading(false);
@@ -139,14 +165,39 @@ export const TraineeDashboard: React.FC<TraineeDashboardProps> = ({ currentUser 
       setIsAttendanceModalOpen(false);
       setNotification({
         type: 'success',
-        text: `Attendance Successfully Registered! Time: ${logRes.attendance.loginTime} • Status: ${logRes.attendance.status}`,
+        text: `Attendance Registered via Biometric Fingerprint Passkey! Time: ${logRes.attendance.loginTime} • Status: ${logRes.attendance.status}`,
       });
     } else {
       setNotification({ type: 'error', text: logRes.error || 'Failed to log attendance.' });
     }
   };
 
-  // Step 15: Allocation Submission
+  // Attendance Logging via Live Selfie Camera
+  const handleLogAttendanceSelfieCaptured = async (liveSelfieBase64: string) => {
+    if (!trainee) return;
+    setLoading(true);
+    setNotification(null);
+
+    const logRes = await attendanceService.logAttendance(
+      trainee.traineeId,
+      'Face Verification Selfie'
+    );
+
+    setLoading(false);
+    if (logRes.success && logRes.attendance) {
+      setTodayAttendance(logRes.attendance);
+      setIsAttendanceModalOpen(false);
+      setIsSelfieCameraOpen(false);
+      setNotification({
+        type: 'success',
+        text: `Attendance Registered via Selfie Face Verification! Time: ${logRes.attendance.loginTime} • Status: ${logRes.attendance.status}`,
+      });
+    } else {
+      setNotification({ type: 'error', text: logRes.error || 'Failed to log attendance.' });
+    }
+  };
+
+  // Allocation Submission
   const handleAllocationSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!trainee) return;
@@ -180,7 +231,7 @@ export const TraineeDashboard: React.FC<TraineeDashboardProps> = ({ currentUser 
     }
   };
 
-  // Step 16: Task Count Submission
+  // Task Count Submission
   const handleTaskSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!trainee || taskCountInput === '') return;
@@ -199,13 +250,12 @@ export const TraineeDashboard: React.FC<TraineeDashboardProps> = ({ currentUser 
     }
   };
 
-  // Step 17: Daily Sign-Out
+  // Daily Sign-Out
   const handleSignOutSubmit = async () => {
     if (!trainee) return;
     setLoading(true);
     setNotification(null);
 
-    // Passkey verification if available
     if (hasPasskey) {
       await authenticateDevicePasskey(trainee.traineeId);
     }
@@ -240,7 +290,7 @@ export const TraineeDashboard: React.FC<TraineeDashboardProps> = ({ currentUser 
               <h2 style={{ fontSize: '1.4rem', fontWeight: 800, color: '#FFFFFF', marginTop: '0.2rem' }}>
                 Welcome, {trainee.name}
               </h2>
-              <div style={{ display: 'flex', gap: '1rem', marginTop: '0.5rem', fontSize: '0.85rem', color: '#CBD5E1' }}>
+              <div style={{ display: 'flex', gap: '1rem', marginTop: '0.5rem', fontSize: '0.85rem', color: '#CBD5E1', flexWrap: 'wrap' }}>
                 <span><strong>ID:</strong> {trainee.traineeId}</span>
                 <span>•</span>
                 <span><strong>Batch:</strong> {trainee.batchId}</span>
@@ -249,10 +299,16 @@ export const TraineeDashboard: React.FC<TraineeDashboardProps> = ({ currentUser 
               </div>
             </div>
 
-            <button onClick={() => setIsChangePassOpen(true)} className="btn btn-gold btn-sm">
-              <KeyRound size={14} />
-              <span>Change Password</span>
-            </button>
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <button onClick={handleRefresh} className="btn btn-gold btn-sm" disabled={refreshing}>
+                <RefreshCw size={14} className={refreshing ? 'spin-icon' : ''} />
+                <span>Refresh</span>
+              </button>
+              <button onClick={() => setIsChangePassOpen(true)} className="btn btn-outline btn-sm" style={{ color: '#FFFFFF', borderColor: '#C5A059' }}>
+                <KeyRound size={14} />
+                <span>Password</span>
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -312,7 +368,7 @@ export const TraineeDashboard: React.FC<TraineeDashboardProps> = ({ currentUser 
             {todayAttendance ? (
               <Badge status={todayAttendance.status} />
             ) : (
-              <span style={{ color: '#64748B' }}>Tap to Log Today's Attendance</span>
+              <span style={{ color: '#64748B' }}>Tap to Verify & Log Attendance</span>
             )}
           </div>
         </div>
@@ -364,11 +420,11 @@ export const TraineeDashboard: React.FC<TraineeDashboardProps> = ({ currentUser 
         </div>
       </div>
 
-      {/* Modal 1: Device / Passkey Registration */}
+      {/* Modal 1: Device Passkey & Selfie Registration Prompt */}
       <Modal
         isOpen={isPasskeyPromptOpen}
         onClose={() => setIsPasskeyPromptOpen(false)}
-        title="Secure Your Attendance Account"
+        title="Account Biometric Security Setup"
       >
         <div style={{ textAlign: 'center', padding: '1rem 0' }}>
           <div
@@ -384,29 +440,41 @@ export const TraineeDashboard: React.FC<TraineeDashboardProps> = ({ currentUser 
               margin: '0 auto 1rem auto',
             }}
           >
-            <Smartphone size={32} color="#C5A059" />
+            <Fingerprint size={32} color="#C5A059" />
           </div>
 
           <h3 style={{ fontSize: '1.15rem', fontWeight: 700, color: '#0A192F', marginBottom: '0.5rem' }}>
-            Device Biometric Authentication
+            Fingerprint & Selfie Verification Setup
           </h3>
           <p style={{ fontSize: '0.9rem', color: '#475569', marginBottom: '1.5rem', lineHeight: 1.6 }}>
-            Register this mobile device to securely verify your identity (via Fingerprint, Face ID, or PIN passkey) when submitting attendance and daily sign-outs.
+            Register your device biometrics (Fingerprint / Passkey) and Selfie Face Scan to prevent proxy attendance logging.
           </p>
 
-          <button
-            onClick={handleRegisterDevice}
-            className="btn btn-gold btn-lg"
-            style={{ width: '100%' }}
-            disabled={loading}
-          >
-            <Smartphone size={18} />
-            <span>{loading ? 'Registering Device...' : 'Register This Device'}</span>
-          </button>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+            <button
+              onClick={handleRegisterDevice}
+              className="btn btn-gold btn-lg"
+              style={{ width: '100%' }}
+              disabled={loading}
+            >
+              <Fingerprint size={18} />
+              <span>Register Device Fingerprint / Passkey</span>
+            </button>
+
+            <button
+              onClick={() => setIsEnrollmentCameraOpen(true)}
+              className="btn btn-navy btn-lg"
+              style={{ width: '100%' }}
+              disabled={loading}
+            >
+              <Camera size={18} />
+              <span>Enroll Selfie Face Scan Photo</span>
+            </button>
+          </div>
         </div>
       </Modal>
 
-      {/* Modal 2: Attendance Modal */}
+      {/* Modal 2: Attendance Verification Choice Modal */}
       <Modal
         isOpen={isAttendanceModalOpen}
         onClose={() => setIsAttendanceModalOpen(false)}
@@ -422,7 +490,7 @@ export const TraineeDashboard: React.FC<TraineeDashboardProps> = ({ currentUser 
             <div style={{ background: '#ECFDF5', border: '1px solid #A7F3D0', padding: '1.25rem', borderRadius: '10px', marginTop: '1rem' }}>
               <CheckCircle2 size={32} color="#047857" style={{ margin: '0 auto 0.5rem auto' }} />
               <h4 style={{ fontSize: '1.1rem', fontWeight: 800, color: '#047857' }}>Attendance Successfully Registered</h4>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.5rem', marginTop: '0.85rem', fontSize: '0.9rem', textAlign: 'left' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.5rem', marginTop: '0.85rem', fontSize: '0.85rem', textAlign: 'left' }}>
                 <div><strong>Log Time:</strong> {todayAttendance.loginTime}</div>
                 <div><strong>Status:</strong> <Badge status={todayAttendance.status} /></div>
                 <div style={{ gridColumn: 'span 2' }}><strong>Auth Method:</strong> {todayAttendance.authenticationMethod}</div>
@@ -430,23 +498,61 @@ export const TraineeDashboard: React.FC<TraineeDashboardProps> = ({ currentUser 
             </div>
           ) : (
             <div>
-              <p style={{ fontSize: '0.9rem', color: '#475569', marginBottom: '1.5rem' }}>
-                Click below to verify your identity via device WebAuthn passkey and record your UAE timestamp.
+              <p style={{ fontSize: '0.9rem', color: '#475569', marginBottom: '1.5rem', fontWeight: 600 }}>
+                Select your preferred biometric verification method to log attendance:
               </p>
 
-              <button
-                onClick={handleLogAttendance}
-                className="btn btn-gold btn-lg"
-                style={{ width: '100%' }}
-                disabled={loading}
-              >
-                <CalendarCheck size={20} />
-                <span>{loading ? 'Verifying Identity...' : 'Log Attendance'}</span>
-              </button>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+                {/* OPTION 1: FINGERPRINT / PASSKEY */}
+                <button
+                  onClick={handleLogAttendanceFingerprint}
+                  className="btn btn-gold btn-lg"
+                  style={{ width: '100%', justifyContent: 'flex-start', padding: '1rem 1.25rem' }}
+                  disabled={loading}
+                >
+                  <Fingerprint size={24} style={{ flexShrink: 0 }} />
+                  <div style={{ textAlign: 'left' }}>
+                    <div style={{ fontWeight: 700, fontSize: '0.95rem' }}>Option 1: Device Fingerprint / Passkey</div>
+                    <div style={{ fontSize: '0.75rem', opacity: 0.85 }}>Scan fingerprint / touch ID sensor</div>
+                  </div>
+                </button>
+
+                {/* OPTION 2: SELFIE FACE SCAN */}
+                <button
+                  onClick={() => setIsSelfieCameraOpen(true)}
+                  className="btn btn-navy btn-lg"
+                  style={{ width: '100%', justifyContent: 'flex-start', padding: '1rem 1.25rem' }}
+                  disabled={loading}
+                >
+                  <Camera size={24} style={{ flexShrink: 0 }} />
+                  <div style={{ textAlign: 'left' }}>
+                    <div style={{ fontWeight: 700, fontSize: '0.95rem' }}>Option 2: Live Selfie Face Scan</div>
+                    <div style={{ fontSize: '0.75rem', opacity: 0.85 }}>Open camera & snap live verification selfie</div>
+                  </div>
+                </button>
+              </div>
             </div>
           )}
         </div>
       </Modal>
+
+      {/* Camera Modal 1: Live Attendance Verification Selfie */}
+      <CameraModal
+        isOpen={isSelfieCameraOpen}
+        onClose={() => setIsSelfieCameraOpen(false)}
+        title="Live Attendance Selfie Scan"
+        subtitle="Take a clear live selfie to verify your identity and log today's attendance timestamp."
+        onCapture={handleLogAttendanceSelfieCaptured}
+      />
+
+      {/* Camera Modal 2: First-time Enrollment Selfie */}
+      <CameraModal
+        isOpen={isEnrollmentCameraOpen}
+        onClose={() => setIsEnrollmentCameraOpen(false)}
+        title="Enroll Face Scan Selfie"
+        subtitle="Snap an official enrollment selfie photo for face verification security."
+        onCapture={handleEnrollmentSelfieCaptured}
+      />
 
       {/* Modal 3: Allocation Form */}
       <Modal

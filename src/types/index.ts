@@ -25,6 +25,7 @@ export interface Trainee {
   program: string;
   active: boolean;
   createdAt: string;
+  enrollmentSelfie?: string | null; // Base64 selfie image recorded on first login
 }
 
 export interface Batch {
@@ -49,7 +50,8 @@ export interface Attendance {
   date: string; // YYYY-MM-DD (Asia/Dubai)
   loginTime: string; // HH:MM:SS AM/PM
   status: AttendanceStatus;
-  authenticationMethod: 'WebAuthn/Passkey' | 'Password Fallback';
+  authenticationMethod: 'Biometric Passkey (Fingerprint/PIN)' | 'Face Verification Selfie' | 'Password Fallback' | 'WebAuthn/Passkey';
+  selfieImage?: string | null; // Verification selfie snapshot
   createdAt: string;
 }
 
@@ -91,6 +93,7 @@ export interface PasskeyCredential {
   publicKey: string;
   counter: number;
   deviceName: string;
+  enrollmentSelfie?: string | null;
   createdAt: string;
 }
 
@@ -122,6 +125,7 @@ export interface TraineeLogSummary {
   latestTaskCount: number | null;
   accountStatus: 'Active' | 'Disabled';
   passkeyRegistered: boolean;
+  hasSelfieEnrolled?: boolean;
   lastPasswordChange: string | null;
   username: string;
 }
