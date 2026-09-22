@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { AuditLog } from '../../types';
-import { auditService } from '../../services/dexie/auditService';
-import { backupService } from '../../services/dexie/backupService';
-import { traineeService } from '../../services/dexie/traineeService';
-import { attendanceService } from '../../services/dexie/attendanceService';
-import { allocationService } from '../../services/dexie/allocationService';
-import { taskService } from '../../services/dexie/taskService';
+import { auditService } from '../../services/hybridAuditService';
+import { backupService } from '../../services/hybridBackupService';
+import { traineeService } from '../../services/hybridTraineeService';
+import { attendanceService } from '../../services/hybridAttendanceService';
+import { allocationService } from '../../services/hybridAllocationService';
+import { taskService } from '../../services/hybridTaskService';
 import { getUAEDateString } from '../../utils/timezone';
 import { exportToCSV } from '../../utils/csv';
 import { Notification } from '../../components/common/Notification';

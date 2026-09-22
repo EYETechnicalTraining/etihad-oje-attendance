@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { User } from '../../types';
-import { authService } from '../../services/dexie/authService';
+import { authService } from '../../services/hybridAuthService';
 import { Modal } from '../../components/common/Modal';
 import { Notification } from '../../components/common/Notification';
 import { KeyRound } from 'lucide-react';

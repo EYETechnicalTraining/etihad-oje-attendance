@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { TraineeLogSummary } from '../../types';
-import { attendanceService } from '../../services/dexie/attendanceService';
-import { authService } from '../../services/dexie/authService';
+import { attendanceService } from '../../services/hybridAttendanceService';
+import { authService } from '../../services/hybridAuthService';
 import { getUAEDateString } from '../../utils/timezone';
 import { Notification } from '../../components/common/Notification';
 import { Shield, KeyRound, UserX, UserCheck, Smartphone } from 'lucide-react';

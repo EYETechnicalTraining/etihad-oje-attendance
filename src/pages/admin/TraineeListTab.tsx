@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Trainee, Batch, User } from '../../types';
-import { traineeService } from '../../services/dexie/traineeService';
+import { traineeService } from '../../services/hybridTraineeService';
 import { Modal } from '../../components/common/Modal';
 import { Notification } from '../../components/common/Notification';
 import { TraineeProfileModal } from './TraineeProfileModal';

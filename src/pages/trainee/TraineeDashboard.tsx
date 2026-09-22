@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { User, Trainee, Remark, Attendance, Allocation, TaskCount, SignOut } from '../../types';
-import { traineeService } from '../../services/dexie/traineeService';
-import { attendanceService } from '../../services/dexie/attendanceService';
-import { allocationService } from '../../services/dexie/allocationService';
-import { taskService } from '../../services/dexie/taskService';
+import { traineeService } from '../../services/hybridTraineeService';
+import { attendanceService } from '../../services/hybridAttendanceService';
+import { allocationService } from '../../services/hybridAllocationService';
+import { taskService } from '../../services/hybridTaskService';
 import {
   registerDevicePasskey,
   authenticateDevicePasskey,

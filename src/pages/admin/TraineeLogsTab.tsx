@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { TraineeLogSummary, Allocation, TaskCount, User } from '../../types';
-import { attendanceService } from '../../services/dexie/attendanceService';
-import { allocationService } from '../../services/dexie/allocationService';
-import { taskService } from '../../services/dexie/taskService';
+import { attendanceService } from '../../services/hybridAttendanceService';
+import { allocationService } from '../../services/hybridAllocationService';
+import { taskService } from '../../services/hybridTaskService';
 import {
   getUAEDateString,
   formatDisplayDate,
