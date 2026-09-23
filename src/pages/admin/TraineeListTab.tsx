@@ -58,6 +58,10 @@ export const TraineeListTab: React.FC<TraineeListTabProps> = ({ currentUser }) =
 
   useEffect(() => {
     loadData();
+    const interval = setInterval(() => {
+      loadData();
+    }, 5 * 60 * 1000); // 5-minute auto-refresh
+    return () => clearInterval(interval);
   }, []);
 
   const handleAddTrainee = async (e: React.FormEvent) => {
@@ -83,6 +87,11 @@ export const TraineeListTab: React.FC<TraineeListTabProps> = ({ currentUser }) =
     setLoading(false);
 
     if (res.success && res.trainee) {
+      // Optimistic update: show new trainee immediately
+      setTrainees((prev) => [
+        ...prev.filter((t) => t.traineeId !== res.trainee!.traineeId),
+        res.trainee!,
+      ]);
       setNotification({
         type: 'success',
         text: `Trainee ${res.trainee.name} added successfully! Default Password: Etihad@${res.trainee.traineeId}`,
@@ -91,7 +100,7 @@ export const TraineeListTab: React.FC<TraineeListTabProps> = ({ currentUser }) =
       setNameInput('');
       setEmailInput('');
       setProgramInput('');
-      loadData();
+      await loadData();
     } else {
       setNotification({ type: 'error', text: res.error || 'Failed to add trainee.' });
     }
@@ -103,13 +112,17 @@ export const TraineeListTab: React.FC<TraineeListTabProps> = ({ currentUser }) =
     }
 
     setNotification(null);
+    // Optimistic update: instantly remove from list
+    setTrainees((prev) => prev.filter((t) => t.traineeId !== traineeId));
+
     const res = await traineeService.removeTrainee(traineeId);
 
     if (res.success) {
       setNotification({ type: 'success', text: `Trainee ${name} removed from system.` });
-      loadData();
+      await loadData();
     } else {
       setNotification({ type: 'error', text: res.error || 'Failed to remove trainee.' });
+      await loadData();
     }
   };
 
@@ -121,10 +134,16 @@ export const TraineeListTab: React.FC<TraineeListTabProps> = ({ currentUser }) =
     const res = await traineeService.addBatch(newBatchName.trim());
 
     if (res.success && res.batch) {
+      // Optimistic update: show new batch immediately
+      setBatches((prev) => [
+        ...prev.filter((b) => b.name.toLowerCase() !== res.batch!.name.toLowerCase()),
+        res.batch!,
+      ]);
+      setBatchInput(res.batch.name);
       setNotification({ type: 'success', text: `Batch "${res.batch.name}" registered successfully.` });
       setNewBatchName('');
       setIsBatchModalOpen(false);
-      loadData();
+      await loadData();
     } else {
       setNotification({ type: 'error', text: res.error || 'Failed to create batch.' });
     }
@@ -133,12 +152,16 @@ export const TraineeListTab: React.FC<TraineeListTabProps> = ({ currentUser }) =
   const handleDeleteBatch = async (batchId: number, name: string) => {
     if (!confirm(`Delete batch "${name}"? Existing trainees assigned to this batch will remain.`)) return;
 
+    // Optimistic update: instantly remove from list
+    setBatches((prev) => prev.filter((b) => b.id !== batchId));
+
     const res = await traineeService.deleteBatch(batchId);
     if (res.success) {
       setNotification({ type: 'success', text: `Batch "${name}" deleted.` });
-      loadData();
+      await loadData();
     } else {
       setNotification({ type: 'error', text: res.error || 'Failed to delete batch.' });
+      await loadData();
     }
   };
 
@@ -160,7 +183,7 @@ export const TraineeListTab: React.FC<TraineeListTabProps> = ({ currentUser }) =
       });
       setHolidayDateInput('');
       setHolidayNameInput('');
-      loadData();
+      await loadData();
     } else {
       setNotification({ type: 'error', text: res.error || 'Failed to add holiday.' });
     }
@@ -170,12 +193,15 @@ export const TraineeListTab: React.FC<TraineeListTabProps> = ({ currentUser }) =
   const handleDeleteHoliday = async (date: string, name: string) => {
     if (!confirm(`Delete holiday "${name}" (${date})?`)) return;
 
+    setHolidays((prev) => prev.filter((h) => h.date !== date));
+
     const res = await holidayService.deleteHoliday(date);
     if (res.success) {
       setNotification({ type: 'success', text: `Holiday "${name}" removed.` });
-      loadData();
+      await loadData();
     } else {
       setNotification({ type: 'error', text: res.error || 'Failed to delete holiday.' });
+      await loadData();
     }
   };
 

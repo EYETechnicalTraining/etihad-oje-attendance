@@ -41,20 +41,23 @@ export const TraineeProfileModal: React.FC<TraineeProfileModalProps> = ({
     e.preventDefault();
     if (!trainee || !newRemark.trim()) return;
 
+    const remarkText = newRemark.trim();
     setLoading(true);
     setMsg(null);
 
     const res = await traineeService.addRemark(
       trainee.traineeId,
-      newRemark,
+      remarkText,
       currentUser.username
     );
 
     setLoading(false);
-    if (res.success) {
+    if (res.success && res.remark) {
       setNewRemark('');
+      // Optimistic update: instantly show new remark
+      setRemarks((prev) => [res.remark!, ...prev.filter((r) => r.id !== res.remark!.id)]);
       setMsg({ type: 'success', text: 'Remark saved successfully.' });
-      loadRemarks();
+      await loadRemarks();
     } else {
       setMsg({ type: 'error', text: res.error || 'Failed to save remark.' });
     }
@@ -64,13 +67,18 @@ export const TraineeProfileModal: React.FC<TraineeProfileModalProps> = ({
     if (!confirm('Are you sure you want to delete this remark? This action cannot be undone.')) return;
     setLoading(true);
     setMsg(null);
+
+    // Optimistic update: instantly remove deleted remark
+    setRemarks((prev) => prev.filter((r) => r.id !== remarkId));
+
     const res = await traineeService.deleteRemark(remarkId);
     setLoading(false);
     if (res.success) {
       setMsg({ type: 'success', text: 'Remark deleted successfully.' });
-      loadRemarks();
+      await loadRemarks();
     } else {
       setMsg({ type: 'error', text: res.error || 'Failed to delete remark.' });
+      await loadRemarks();
     }
   };
 

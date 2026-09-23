@@ -76,6 +76,13 @@ export const TraineeLogsTab: React.FC = () => {
       hasTriggeredDailyAutoNoShow.current = true;
     }
     loadLogs(selectedDate, shouldRunDailyAuto);
+
+    // Auto-refresh attendance logs every 5 minutes in background
+    const interval = setInterval(() => {
+      loadLogs(selectedDate, false);
+    }, 5 * 60 * 1000);
+
+    return () => clearInterval(interval);
   }, [selectedDate]);
 
   const handlePrevDay = () => {

@@ -47,6 +47,10 @@ export const AccessControlTab: React.FC<AccessControlTabProps> = ({ currentUser 
 
   useEffect(() => {
     loadData();
+    const interval = setInterval(() => {
+      loadData();
+    }, 5 * 60 * 1000); // 5-minute auto-refresh
+    return () => clearInterval(interval);
   }, [isMaster]);
 
   // ---------------- Trainee Actions ----------------
@@ -59,7 +63,7 @@ export const AccessControlTab: React.FC<AccessControlTabProps> = ({ currentUser 
         type: 'success',
         text: `Password for ${name} reset to default: ${res.newPassword}`,
       });
-      loadData();
+      await loadData();
     } else {
       setMsg({ type: 'error', text: res.error || 'Failed to reset password.' });
     }
@@ -71,15 +75,21 @@ export const AccessControlTab: React.FC<AccessControlTabProps> = ({ currentUser 
 
     if (!confirm(`Are you sure you want to ${actionText} the account for ${name}?`)) return;
 
+    // Optimistic update
+    setLogs((prev) =>
+      prev.map((l) => (l.traineeId === traineeId ? { ...l, accountStatus: nextState ? 'Active' : 'Disabled' } : l))
+    );
+
     const res = await authService.toggleUserStatus(traineeId, nextState);
     if (res.success) {
       setMsg({
         type: 'success',
         text: `Account for ${name} has been ${nextState ? 'enabled' : 'disabled'}.`,
       });
-      loadData();
+      await loadData();
     } else {
       setMsg({ type: 'error', text: res.error || 'Failed to update user status.' });
+      await loadData();
     }
   };
 
@@ -93,6 +103,11 @@ export const AccessControlTab: React.FC<AccessControlTabProps> = ({ currentUser 
     setAddingInstructor(false);
 
     if (res.success && res.instructor) {
+      // Optimistic update: show new instructor immediately
+      setInstructors((prev) => [
+        res.instructor!,
+        ...prev.filter((i) => i.email.toLowerCase() !== res.instructor!.email.toLowerCase()),
+      ]);
       setMsg({
         type: 'success',
         text: `Instructor ${res.instructor.name} registered! Login: ${res.instructor.email} • Password: Etihad@${res.instructor.staffNumber}`,
@@ -100,7 +115,7 @@ export const AccessControlTab: React.FC<AccessControlTabProps> = ({ currentUser 
       setStaffNumberInput('');
       setNameInput('');
       setEmailInput('');
-      loadData();
+      await loadData();
     } else {
       setMsg({ type: 'error', text: res.error || 'Failed to add instructor.' });
     }
@@ -115,7 +130,7 @@ export const AccessControlTab: React.FC<AccessControlTabProps> = ({ currentUser 
         type: 'success',
         text: `Password for instructor ${name} reset to default: ${res.newPassword}`,
       });
-      loadData();
+      await loadData();
     } else {
       setMsg({ type: 'error', text: res.error || 'Failed to reset instructor password.' });
     }
@@ -127,30 +142,40 @@ export const AccessControlTab: React.FC<AccessControlTabProps> = ({ currentUser 
     if (!confirm(`Are you sure you want to ${actionText} the account for instructor ${name}?`)) return;
 
     setMsg(null);
+    // Optimistic update
+    setInstructors((prev) =>
+      prev.map((inst) => (inst.email === username ? { ...inst, active: nextState } : inst))
+    );
+
     const res = await authService.toggleInstructorStatus(username, nextState);
     if (res.success) {
       setMsg({
         type: 'success',
         text: `Instructor account for ${name} has been ${nextState ? 'enabled' : 'disabled'}.`,
       });
-      loadData();
+      await loadData();
     } else {
       setMsg({ type: 'error', text: res.error || 'Failed to update instructor status.' });
+      await loadData();
     }
   };
 
   const handleRemoveInstructor = async (username: string, name: string) => {
     if (!confirm(`Are you sure you want to delete instructor ${name} (${username})? This action cannot be undone.`)) return;
     setMsg(null);
+    // Optimistic update: remove immediately
+    setInstructors((prev) => prev.filter((inst) => inst.email !== username));
+
     const res = await authService.removeInstructor(username);
     if (res.success) {
       setMsg({
         type: 'success',
         text: `Instructor account ${name} removed from system.`,
       });
-      loadData();
+      await loadData();
     } else {
       setMsg({ type: 'error', text: res.error || 'Failed to delete instructor.' });
+      await loadData();
     }
   };
 

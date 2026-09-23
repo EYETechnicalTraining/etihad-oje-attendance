@@ -84,6 +84,9 @@ export class HybridTraineeService implements ITraineeService {
         last_password_change: null,
       }]);
 
+      // Sync Dexie locally
+      await dexieTrainee.addTrainee(traineeData);
+
       return {
         success: true,
         trainee: {
@@ -103,7 +106,10 @@ export class HybridTraineeService implements ITraineeService {
   }
 
   async removeTrainee(traineeId: string): Promise<{ success: boolean; error?: string }> {
-    if (!isSupabaseConfigured || !supabase) return await dexieTrainee.removeTrainee(traineeId);
+    // Sync Dexie locally
+    await dexieTrainee.removeTrainee(traineeId);
+
+    if (!isSupabaseConfigured || !supabase) return { success: true };
 
     try {
       await supabase.from('trainees').delete().eq('trainee_id', traineeId);
@@ -119,15 +125,22 @@ export class HybridTraineeService implements ITraineeService {
     if (!isSupabaseConfigured || !supabase) return await dexieTrainee.getBatches();
 
     const { data } = await supabase.from('batches').select('*');
-    if (!data) return [];
+    if (!data) return await dexieTrainee.getBatches();
     return data.map((b: any) => ({ id: b.id, name: b.name, createdAt: b.created_at }));
   }
 
   async addBatch(name: string): Promise<{ success: boolean; batch?: Batch; error?: string }> {
-    if (!isSupabaseConfigured || !supabase) return await dexieTrainee.addBatch(name);
+    const cleanName = name.trim();
+    // Sync Dexie locally
+    await dexieTrainee.addBatch(cleanName);
+
+    if (!isSupabaseConfigured || !supabase) {
+      const batches = await dexieTrainee.getBatches();
+      const b = batches.find((x) => x.name.toLowerCase() === cleanName.toLowerCase());
+      return { success: true, batch: b };
+    }
 
     try {
-      const cleanName = name.trim();
       const createdAt = getUAEDateString();
       const { data, error } = await supabase.from('batches').insert([{ name: cleanName, created_at: createdAt }]).select();
       if (error || !data) return { success: false, error: error?.message || 'Failed to add batch.' };
@@ -138,7 +151,10 @@ export class HybridTraineeService implements ITraineeService {
   }
 
   async deleteBatch(batchId: number): Promise<{ success: boolean; error?: string }> {
-    if (!isSupabaseConfigured || !supabase) return await dexieTrainee.deleteBatch(batchId);
+    // Sync Dexie locally
+    await dexieTrainee.deleteBatch(batchId);
+
+    if (!isSupabaseConfigured || !supabase) return { success: true };
 
     try {
       await supabase.from('batches').delete().eq('id', batchId);
@@ -152,7 +168,7 @@ export class HybridTraineeService implements ITraineeService {
     if (!isSupabaseConfigured || !supabase) return await dexieTrainee.getRemarks(traineeId);
 
     const { data } = await supabase.from('remarks').select('*').eq('trainee_id', traineeId).order('timestamp', { ascending: false });
-    if (!data) return [];
+    if (!data || data.length === 0) return await dexieTrainee.getRemarks(traineeId);
     return data.map((r: any) => ({
       id: r.id,
       traineeId: r.trainee_id,
@@ -165,7 +181,11 @@ export class HybridTraineeService implements ITraineeService {
   }
 
   async addRemark(traineeId: string, remarkText: string, author: string): Promise<{ success: boolean; remark?: Remark; error?: string }> {
-    if (!isSupabaseConfigured || !supabase) return await dexieTrainee.addRemark(traineeId, remarkText, author);
+    const cleanRemark = remarkText.trim();
+    // Sync Dexie locally
+    const dexieRes = await dexieTrainee.addRemark(traineeId, cleanRemark, author);
+
+    if (!isSupabaseConfigured || !supabase) return dexieRes;
 
     try {
       const date = getUAEDateString();
@@ -174,20 +194,24 @@ export class HybridTraineeService implements ITraineeService {
 
       const { data, error } = await supabase.from('remarks').insert([{
         trainee_id: traineeId,
-        remark: remarkText.trim(),
+        remark: cleanRemark,
         created_by: author,
         date,
         time,
         timestamp,
       }]).select();
 
-      if (error || !data) return { success: false, error: error?.message || 'Failed to save remark.' };
+      if (error || !data) {
+        // Return local dexie remark if Supabase failed or errored
+        return dexieRes.success ? dexieRes : { success: false, error: error?.message || 'Failed to save remark.' };
+      }
+
       return {
         success: true,
         remark: {
           id: data[0].id,
           traineeId,
-          remark: remarkText,
+          remark: cleanRemark,
           createdBy: author,
           date,
           time,
@@ -195,7 +219,7 @@ export class HybridTraineeService implements ITraineeService {
         },
       };
     } catch (err: any) {
-      return { success: false, error: err.message || 'Failed to save remark' };
+      return dexieRes.success ? dexieRes : { success: false, error: err.message || 'Failed to save remark' };
     }
   }
 
