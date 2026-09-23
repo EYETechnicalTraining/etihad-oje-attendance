@@ -3,7 +3,14 @@ import { Trainee, Batch } from '../types';
 import { traineeService } from '../services/hybridTraineeService';
 import { attendanceService } from '../services/hybridAttendanceService';
 import { taskService } from '../services/hybridTaskService';
-import { getDatesInRange, formatDisplayDate, isWeekend } from './timezone';
+import { holidayService } from '../services/hybridHolidayService';
+import {
+  getDatesInRange,
+  formatDisplayDate,
+  isWeekend,
+  getUAEDateString,
+  isPastCutoffTime,
+} from './timezone';
 
 export interface ExcelExportOptions {
   startDate: string; // YYYY-MM-DD
@@ -20,11 +27,18 @@ export async function generateMatrixExcelReport(options: ExcelExportOptions): Pr
     trainees = trainees.filter((t) => t.batchId === batchName);
   }
 
-  // Sort trainees by ID
+  // Sort trainees by ID numerically
   trainees.sort((a, b) => a.traineeId.localeCompare(b.traineeId, undefined, { numeric: true }));
 
-  // 2. Dates in range
+  // 2. Dates in range & System Context
   const dates = getDatesInRange(startDate, endDate);
+  const today = getUAEDateString();
+  const past8AM = isPastCutoffTime(today);
+
+  // Fetch holidays for accurate status
+  const holidays = await holidayService.getAllHolidays();
+  const holidayMap = new Map<string, string>();
+  holidays.forEach((h) => holidayMap.set(h.date, h.name));
 
   // 3. Build Headers
   const headerRow1: string[] = ['Staff Number', 'Name', 'Batch'];
@@ -32,7 +46,15 @@ export async function generateMatrixExcelReport(options: ExcelExportOptions): Pr
 
   dates.forEach((dateStr) => {
     const isWknd = isWeekend(dateStr);
-    const dateTitle = `${dateStr} (${isWknd ? 'Weekend' : formatDisplayDate(dateStr, false)})`;
+    const isHol = holidayMap.has(dateStr);
+    const isFuture = dateStr > today;
+
+    let dateTag = formatDisplayDate(dateStr, false);
+    if (isWknd) dateTag = 'Weekend';
+    else if (isHol) dateTag = 'Holiday';
+    else if (isFuture) dateTag = 'Upcoming';
+
+    const dateTitle = `${dateStr} (${dateTag})`;
     
     headerRow1.push(dateTitle, '', '');
     headerRow2.push('Status', 'Log In Time', 'Sign Out Time');
@@ -50,6 +72,10 @@ export async function generateMatrixExcelReport(options: ExcelExportOptions): Pr
 
     for (const dateStr of dates) {
       const isWknd = isWeekend(dateStr);
+      const isHol = holidayMap.has(dateStr);
+      const isFuture = dateStr > today;
+      const isTodayPending = dateStr === today && !past8AM;
+
       const att = await attendanceService.getTraineeAttendanceForDate(trainee.traineeId, dateStr);
       const signOut = await taskService.getSignOut(trainee.traineeId, dateStr);
 
@@ -62,6 +88,13 @@ export async function generateMatrixExcelReport(options: ExcelExportOptions): Pr
         loginTime = att.loginTime;
       } else if (isWknd) {
         status = 'Weekend';
+      } else if (isHol) {
+        status = 'Holiday';
+      } else if (isFuture || isTodayPending) {
+        // Future days or today before 8:00 AM show "Pending" instead of "No Show"
+        status = 'Pending';
+      } else {
+        status = 'No Show';
       }
 
       row.push(status, loginTime, signOutTime);
@@ -96,76 +129,111 @@ export async function generateMatrixExcelReport(options: ExcelExportOptions): Pr
     { wch: 16 }, // Batch
   ];
   dates.forEach(() => {
-    colWidths.push({ wch: 16 }, { wch: 14 }, { wch: 14 });
+    colWidths.push({ wch: 16 }, { wch: 15 }, { wch: 15 });
   });
   worksheet['!cols'] = colWidths;
 
-  // 6. Apply Highlight & Cell Styling
+  // 6. Professional Border and Style Computation
   const totalRows = matrixData.length;
   const totalCols = headerRow1.length;
 
-  // Styles
-  const headerRow0Style = {
-    font: { name: 'Calibri', sz: 11, bold: true, color: { rgb: 'FFFFFF' } },
-    fill: { fgColor: { rgb: '002060' } }, // Etihad Deep Navy
-    alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
-    border: {
-      top: { style: 'thin', color: { rgb: 'CBD5E1' } },
-      bottom: { style: 'thin', color: { rgb: 'CBD5E1' } },
-      left: { style: 'thin', color: { rgb: 'CBD5E1' } },
-      right: { style: 'thin', color: { rgb: 'CBD5E1' } },
-    },
-  };
+  const BORDER_COLOR_THICK = { rgb: '002060' }; // Dark Etihad Navy for date blocks and outer frame
+  const BORDER_COLOR_THIN = { rgb: 'CBD5E1' };  // Slate 300 for neat cell grid lines
 
-  const headerRow1Style = {
-    font: { name: 'Calibri', sz: 10, bold: true, color: { rgb: 'FFFFFF' } },
-    fill: { fgColor: { rgb: '1F4E78' } }, // Slate Navy
-    alignment: { horizontal: 'center', vertical: 'center' },
-    border: {
-      top: { style: 'thin', color: { rgb: 'CBD5E1' } },
-      bottom: { style: 'thin', color: { rgb: 'CBD5E1' } },
-      left: { style: 'thin', color: { rgb: 'CBD5E1' } },
-      right: { style: 'thin', color: { rgb: 'CBD5E1' } },
-    },
-  };
+  /**
+   * Computes precise borders for each cell:
+   * - Thin border for each row (top and bottom)
+   * - Thick (medium) border framing each full date (left of sub-col 0, right of sub-col 2)
+   * - Thin border between the 3 sub-columns inside each date
+   * - Thick divider separating title columns (Staff No, Name, Batch) from date columns
+   */
+  function computeCellBorder(r: number, c: number) {
+    // 1. Horizontal borders (row grid)
+    let topStyle = 'thin';
+    let topColor = BORDER_COLOR_THIN;
+    let bottomStyle = 'thin';
+    let bottomColor = BORDER_COLOR_THIN;
 
-  // Title Columns Style (Columns A, B, C: Staff Number, Name, Batch)
-  const titleColumnStyle = {
-    font: { name: 'Calibri', sz: 10, bold: true, color: { rgb: '0A192F' } },
-    fill: { fgColor: { rgb: 'E2E8F0' } }, // Soft Slate Grey Highlight
-    alignment: { horizontal: 'left', vertical: 'center' },
-    border: {
-      top: { style: 'thin', color: { rgb: 'CBD5E1' } },
-      bottom: { style: 'thin', color: { rgb: 'CBD5E1' } },
-      left: { style: 'thin', color: { rgb: 'CBD5E1' } },
-      right: { style: 'thin', color: { rgb: 'CBD5E1' } },
-    },
-  };
+    if (r === 0) {
+      topStyle = 'medium';
+      topColor = BORDER_COLOR_THICK;
+    }
+    if (r === 1) {
+      // Bottom of the 2-row header block separating headers from data rows
+      bottomStyle = 'medium';
+      bottomColor = BORDER_COLOR_THICK;
+    }
+    if (r === totalRows - 1) {
+      // Bottom of the last data row
+      bottomStyle = 'medium';
+      bottomColor = BORDER_COLOR_THICK;
+    }
 
-  const standardDataStyle = {
-    font: { name: 'Calibri', sz: 10, color: { rgb: '1E293B' } },
-    alignment: { horizontal: 'center', vertical: 'center' },
-    border: {
-      top: { style: 'thin', color: { rgb: 'E2E8F0' } },
-      bottom: { style: 'thin', color: { rgb: 'E2E8F0' } },
-      left: { style: 'thin', color: { rgb: 'E2E8F0' } },
-      right: { style: 'thin', color: { rgb: 'E2E8F0' } },
-    },
-  };
+    // 2. Vertical borders (columns & date blocks)
+    let leftStyle = 'thin';
+    let leftColor = BORDER_COLOR_THIN;
+    let rightStyle = 'thin';
+    let rightColor = BORDER_COLOR_THIN;
 
-  const getStatusStyle = (statusStr: string) => {
+    if (c === 0) {
+      // Far left outer boundary
+      leftStyle = 'medium';
+      leftColor = BORDER_COLOR_THICK;
+    }
+
+    if (c === 2) {
+      // Right edge of Title columns (Staff No, Name, Batch) separating from Date columns
+      rightStyle = 'medium';
+      rightColor = BORDER_COLOR_THICK;
+    }
+
+    if (c >= 3) {
+      const subCol = (c - 3) % 3;
+      if (subCol === 0) {
+        // Start of Date column block (Status) -> thick left border
+        leftStyle = 'medium';
+        leftColor = BORDER_COLOR_THICK;
+      }
+      if (subCol === 2) {
+        // End of Date column block (Sign Out Time) -> thick right border
+        rightStyle = 'medium';
+        rightColor = BORDER_COLOR_THICK;
+      }
+    }
+
+    if (c === totalCols - 1) {
+      // Far right outer boundary
+      rightStyle = 'medium';
+      rightColor = BORDER_COLOR_THICK;
+    }
+
+    return {
+      top: { style: topStyle, color: topColor },
+      bottom: { style: bottomStyle, color: bottomColor },
+      left: { style: leftStyle, color: leftColor },
+      right: { style: rightStyle, color: rightColor },
+    };
+  }
+
+  const getStatusStyle = (statusStr: string, border: any) => {
     let fgColor = 'FFFFFF';
     let fontColor = '000000';
 
     if (statusStr === 'Present') {
       fgColor = 'E2EFDA'; // Light Green
-      fontColor = '375623';
+      fontColor = '276A3C';
     } else if (statusStr === 'Late to Work') {
       fgColor = 'FFF2CC'; // Light Amber
-      fontColor = 'B25900';
+      fontColor = 'B45309';
     } else if (statusStr === 'No Show') {
       fgColor = 'FCE4D6'; // Light Red
-      fontColor = 'C00000';
+      fontColor = 'B91C1C';
+    } else if (statusStr === 'Pending') {
+      fgColor = 'F8FAFC'; // Soft Slate Grey
+      fontColor = '64748B'; // Muted Slate
+    } else if (statusStr === 'Holiday') {
+      fgColor = 'FDF2F8'; // Light Pink
+      fontColor = 'BE185D'; // Dark Pink/Magenta
     } else if (['Annual Leave', 'Sick Leave', 'Military Services', 'Training', 'Stand Down'].includes(statusStr)) {
       fgColor = 'D9E1F2'; // Light Blue/Purple accent
       fontColor = '1F4E78';
@@ -178,12 +246,7 @@ export async function generateMatrixExcelReport(options: ExcelExportOptions): Pr
       font: { name: 'Calibri', sz: 10, bold: true, color: { rgb: fontColor } },
       fill: { fgColor: { rgb: fgColor } },
       alignment: { horizontal: 'center', vertical: 'center' },
-      border: {
-        top: { style: 'thin', color: { rgb: 'E2E8F0' } },
-        bottom: { style: 'thin', color: { rgb: 'E2E8F0' } },
-        left: { style: 'thin', color: { rgb: 'E2E8F0' } },
-        right: { style: 'thin', color: { rgb: 'E2E8F0' } },
-      },
+      border,
     };
   };
 
@@ -194,15 +257,29 @@ export async function generateMatrixExcelReport(options: ExcelExportOptions): Pr
         worksheet[cellRef] = { v: '', t: 's' };
       }
 
+      const cellBorder = computeCellBorder(r, c);
+
       if (r === 0) {
-        worksheet[cellRef].s = headerRow0Style;
-      } else if (r === 1) {
-        worksheet[cellRef].s = headerRow1Style;
-      } else if (c < 3) {
-        // Highlighted Title Columns: Staff Number, Name, Batch
         worksheet[cellRef].s = {
-          ...titleColumnStyle,
+          font: { name: 'Calibri', sz: 11, bold: true, color: { rgb: 'FFFFFF' } },
+          fill: { fgColor: { rgb: '002060' } }, // Deep Etihad Navy
+          alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
+          border: cellBorder,
+        };
+      } else if (r === 1) {
+        worksheet[cellRef].s = {
+          font: { name: 'Calibri', sz: 10, bold: true, color: { rgb: 'FFFFFF' } },
+          fill: { fgColor: { rgb: '1F4E78' } }, // Slate Navy
+          alignment: { horizontal: 'center', vertical: 'center' },
+          border: cellBorder,
+        };
+      } else if (c < 3) {
+        // Title Columns: Staff Number, Name, Batch
+        worksheet[cellRef].s = {
+          font: { name: 'Calibri', sz: 10, bold: true, color: { rgb: '0A192F' } },
+          fill: { fgColor: { rgb: 'F1F5F9' } },
           alignment: c === 1 ? { horizontal: 'left', vertical: 'center' } : { horizontal: 'center', vertical: 'center' },
+          border: cellBorder,
         };
       } else {
         // Date Columns (Status, Login Time, Sign Out Time)
@@ -210,10 +287,14 @@ export async function generateMatrixExcelReport(options: ExcelExportOptions): Pr
         if (subColIndex === 0) {
           // Status cell
           const cellVal = String(worksheet[cellRef].v || '');
-          worksheet[cellRef].s = getStatusStyle(cellVal);
+          worksheet[cellRef].s = getStatusStyle(cellVal, cellBorder);
         } else {
           // Login Time or Sign Out Time
-          worksheet[cellRef].s = standardDataStyle;
+          worksheet[cellRef].s = {
+            font: { name: 'Calibri', sz: 10, color: { rgb: '1E293B' } },
+            alignment: { horizontal: 'center', vertical: 'center' },
+            border: cellBorder,
+          };
         }
       }
     }
