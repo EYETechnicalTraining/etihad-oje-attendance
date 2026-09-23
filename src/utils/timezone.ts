@@ -52,6 +52,33 @@ export function formatDisplayDate(dateString: string, includeDayOfWeek: boolean 
 }
 
 /**
+ * Formats a date string (YYYY-MM-DD or ISO) into "01 Jan 2026" format
+ */
+export function formatMediumDate(dateString: string): string {
+  if (!dateString) return '-';
+  try {
+    const parts = dateString.split('-');
+    if (parts.length === 3) {
+      const year = parseInt(parts[0], 10);
+      const month = parseInt(parts[1], 10) - 1;
+      const day = parseInt(parts[2], 10);
+      const dayStr = String(day).padStart(2, '0');
+      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      return `${dayStr} ${months[month]} ${year}`;
+    }
+    const d = new Date(dateString);
+    if (!isNaN(d.getTime())) {
+      const dayStr = String(d.getDate()).padStart(2, '0');
+      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      return `${dayStr} ${months[d.getMonth()]} ${d.getFullYear()}`;
+    }
+  } catch {
+    // fallback
+  }
+  return dateString;
+}
+
+/**
  * Checks if a given date string is a weekend (Saturday or Sunday)
  */
 export function isWeekend(dateString: string): boolean {

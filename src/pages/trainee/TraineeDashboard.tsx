@@ -7,7 +7,7 @@ import { taskService } from '../../services/hybridTaskService';
 import { settingsService } from '../../services/hybridSettingsService';
 import { emailService } from '../../services/emailService';
 import { getDeviceLocation, checkGeofence } from '../../utils/geofence';
-import { getUAEDateString, getUAETimeString, formatDisplayDate } from '../../utils/timezone';
+import { getUAEDateString, getUAETimeString, formatDisplayDate, formatMediumDate } from '../../utils/timezone';
 import { Modal } from '../../components/common/Modal';
 import { Notification } from '../../components/common/Notification';
 import { Badge } from '../../components/common/Badge';
@@ -318,7 +318,7 @@ export const TraineeDashboard: React.FC<TraineeDashboardProps> = ({ currentUser 
               "{remarks[0].remark}"
             </div>
             <div style={{ fontSize: '0.75rem', color: '#64748B', textAlign: 'right' }}>
-              Recorded on {remarks[0].date}
+              Recorded on {formatMediumDate(remarks[0].date)}
             </div>
           </div>
         )}
@@ -638,7 +638,7 @@ export const TraineeDashboard: React.FC<TraineeDashboardProps> = ({ currentUser 
                 "{r.remark}"
               </div>
               <div style={{ fontSize: '0.75rem', color: '#64748B', textAlign: 'right' }}>
-                Recorded on {r.date}
+                Recorded on {formatMediumDate(r.date)}
               </div>
             </div>
           ))}

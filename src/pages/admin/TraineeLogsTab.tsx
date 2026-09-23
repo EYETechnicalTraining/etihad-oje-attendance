@@ -8,6 +8,7 @@ import { holidayService } from '../../services/hybridHolidayService';
 import {
   getUAEDateString,
   formatDisplayDate,
+  formatMediumDate,
   getPreviousDateString,
   getNextDateString,
   isWeekend,
@@ -483,7 +484,7 @@ export const TraineeLogsTab: React.FC = () => {
                   <tbody>
                     {allocationsList.map((a) => (
                       <tr key={a.id}>
-                        <td>{a.date} {a.time}</td>
+                        <td>{formatMediumDate(a.date)} • {a.time}</td>
                         <td>{a.location}</td>
                         <td>{a.insideOutside}</td>
                         <td style={{ fontWeight: 700 }}>{a.aircraftRegistration}</td>
@@ -521,7 +522,7 @@ export const TraineeLogsTab: React.FC = () => {
                   {tasksList[0].taskCount} Tasks
                 </div>
                 <div style={{ fontSize: '0.8rem', color: '#475569' }}>
-                  Submitted on {tasksList[0].date} at {tasksList[0].time}
+                  Submitted on {formatMediumDate(tasksList[0].date)} at {tasksList[0].time}
                 </div>
               </div>
 
@@ -540,7 +541,7 @@ export const TraineeLogsTab: React.FC = () => {
                   <tbody>
                     {tasksList.map((t) => (
                       <tr key={t.id}>
-                        <td>{t.date}</td>
+                        <td>{formatMediumDate(t.date)}</td>
                         <td>{t.time}</td>
                         <td style={{ textAlign: 'right', fontWeight: 700, color: '#0A192F' }}>
                           {t.taskCount}

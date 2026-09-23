@@ -4,6 +4,7 @@ import { traineeService } from '../../services/hybridTraineeService';
 import { Modal } from '../../components/common/Modal';
 import { Notification } from '../../components/common/Notification';
 import { MessageSquare, Calendar, Clock, UserCheck, PlusCircle, Trash2 } from 'lucide-react';
+import { formatMediumDate } from '../../utils/timezone';
 
 interface TraineeProfileModalProps {
   isOpen: boolean;
@@ -65,17 +66,17 @@ export const TraineeProfileModal: React.FC<TraineeProfileModalProps> = ({
     }
   };
 
-  const handleDeleteRemark = async (remarkId: number) => {
+  const handleDeleteRemark = async (remarkId: number, remarkText?: string) => {
     if (!trainee) return;
     if (!confirm('Are you sure you want to delete this remark? This action cannot be undone.')) return;
     setDeletingId(remarkId);
     setMsg(null);
 
-    // 1. Optimistic update: instantly remove deleted remark on 1 click
-    setRemarks((prev) => prev.filter((r) => r.id !== remarkId));
+    // 1. Optimistic update: instantly remove deleted remark and any identical duplicate copies on 1 click
+    setRemarks((prev) => prev.filter((r) => r.id !== remarkId && (!remarkText || r.remark !== remarkText)));
 
     // 2. Delete from database
-    const res = await traineeService.deleteRemark(remarkId);
+    const res = await traineeService.deleteRemark(remarkId, trainee.traineeId, remarkText);
     setDeletingId(null);
     if (res.success) {
       setMsg({ type: 'success', text: 'Remark deleted successfully.' });
@@ -165,12 +166,12 @@ export const TraineeProfileModal: React.FC<TraineeProfileModalProps> = ({
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.75rem', color: '#64748B' }}>
                   <span style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                    <Calendar size={13} color="#C5A059" /> <span>Date: {r.date}</span>
+                    <Calendar size={13} color="#C5A059" /> <span>Date: {formatMediumDate(r.date)}</span>
                   </span>
                   {currentUser.role === 'MASTER' && (
                     <button
                       type="button"
-                      onClick={() => r.id && handleDeleteRemark(r.id)}
+                      onClick={() => r.id && handleDeleteRemark(r.id, r.remark)}
                       disabled={deletingId === r.id}
                       className="btn btn-outline btn-sm"
                       style={{ padding: '0.15rem 0.45rem', fontSize: '0.7rem', color: '#B91C1C', borderColor: '#FCA5A5' }}

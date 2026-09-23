@@ -264,18 +264,30 @@ export class HybridTraineeService implements ITraineeService {
     }
   }
 
-  async deleteRemark(remarkId: number): Promise<{ success: boolean; error?: string }> {
+  async deleteRemark(remarkId: number, traineeId?: string, remarkText?: string): Promise<{ success: boolean; error?: string }> {
     let success = true;
     let errorMsg = '';
 
     // 1. Delete in Supabase if configured
     if (isSupabaseConfigured && supabase) {
       try {
-        const { error } = await supabase.from('remarks').delete().eq('id', remarkId);
-        if (error) {
-          console.error('Failed to delete remark from Supabase:', error);
+        const { error: idError } = await supabase.from('remarks').delete().eq('id', remarkId);
+        if (idError) {
+          console.error('Failed to delete remark from Supabase:', idError);
           success = false;
-          errorMsg = error.message;
+          errorMsg = idError.message;
+        }
+
+        // Also delete any duplicate remarks with identical trainee_id and text created previously
+        if (traineeId && remarkText) {
+          const { error: dupError } = await supabase
+            .from('remarks')
+            .delete()
+            .eq('trainee_id', traineeId)
+            .eq('remark', remarkText);
+          if (dupError) {
+            console.warn('Failed to delete duplicate remarks from Supabase:', dupError);
+          }
         }
       } catch (err: any) {
         console.error('Failed to delete remark from Supabase:', err);
@@ -286,7 +298,7 @@ export class HybridTraineeService implements ITraineeService {
 
     // 2. Delete in Dexie
     try {
-      await db.remarks.delete(remarkId);
+      await dexieTrainee.deleteRemark(remarkId, traineeId, remarkText);
     } catch (err) {
       console.warn('Failed to delete remark from Dexie:', err);
     }

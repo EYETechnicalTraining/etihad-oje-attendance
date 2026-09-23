@@ -202,21 +202,33 @@ export class DexieTraineeService implements ITraineeService {
     }
   }
 
-  async deleteRemark(remarkId: number): Promise<{ success: boolean; error?: string }> {
+  async deleteRemark(remarkId: number, traineeId?: string, remarkText?: string): Promise<{ success: boolean; error?: string }> {
     try {
       const remark = await db.remarks.get(remarkId);
-      if (!remark) return { success: false, error: 'Remark not found' };
+      const targetTraineeId = traineeId || remark?.traineeId;
+      const targetRemarkText = remarkText || remark?.remark;
 
       await db.remarks.delete(remarkId);
 
-      await db.auditLogs.add({
-        user: 'selva.master',
-        action: `Deleted Remark #${remarkId} for Trainee ${remark.traineeId}`,
-        date: getUAEDateString(),
-        time: getUAETimeString(),
-        relatedTrainee: remark.traineeId,
-        timestamp: Date.now(),
-      });
+      // If traineeId and remarkText are provided, delete any duplicate remarks in Dexie
+      if (targetTraineeId && targetRemarkText) {
+        await db.remarks
+          .where('traineeId')
+          .equals(targetTraineeId)
+          .and((r) => r.remark === targetRemarkText)
+          .delete();
+      }
+
+      if (targetTraineeId) {
+        await db.auditLogs.add({
+          user: 'selva.master',
+          action: `Deleted Remark #${remarkId} for Trainee ${targetTraineeId}`,
+          date: getUAEDateString(),
+          time: getUAETimeString(),
+          relatedTrainee: targetTraineeId,
+          timestamp: Date.now(),
+        });
+      }
 
       return { success: true };
     } catch (err: any) {
