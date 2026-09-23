@@ -94,8 +94,10 @@ export const TraineeLogsTab: React.FC = () => {
           targetTrainee.name,
           targetTrainee.username,
           selectedDate,
-          targetTrainee.loginTime !== '-' ? targetTrainee.loginTime : '07:31 AM',
-          traineeId
+          'Logged after 7:30 AM',
+          traineeId,
+          undefined,
+          true
         );
       } else if (targetStatus === 'No Show') {
         await emailService.sendNoShowEmail(

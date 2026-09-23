@@ -190,16 +190,22 @@ export class HybridAttendanceService implements IAttendanceService {
     try {
       const existing = await this.getTraineeAttendanceForDate(traineeId, date);
 
+      const loginTime = newStatus === 'Late to Work' ? 'Logged after 7:30 AM' : `Manual (${newStatus})`;
+
       if (existing) {
+        const updatePayload: any = { status: newStatus };
+        if (newStatus === 'Late to Work' || existing.loginTime?.startsWith('Manual')) {
+          updatePayload.login_time = loginTime;
+        }
+
         const { error } = await supabase
           .from('attendance')
-          .update({ status: newStatus })
+          .update(updatePayload)
           .eq('trainee_id', traineeId)
           .eq('date', date);
 
         if (error) return { success: false, error: error.message };
       } else {
-        const loginTime = `Manual (${newStatus})`;
         const createdAt = new Date().toISOString();
 
         const { error } = await supabase.from('attendance').insert([{

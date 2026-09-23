@@ -33,8 +33,9 @@ export function generateAttendanceEmailHtml(options: {
   status: 'No Show' | 'Late to Work';
   loginTime?: string;
   traineeId?: string;
+  isManual?: boolean;
 }): string {
-  const { toName, dateStr, status, loginTime, traineeId } = options;
+  const { toName, dateStr, status, loginTime, traineeId, isManual } = options;
   const isNoShow = status === 'No Show';
   const displayDate = formatDisplayDate(dateStr, true) || dateStr;
 
@@ -44,11 +45,30 @@ export function generateAttendanceEmailHtml(options: {
   const statusIcon = isNoShow ? '⚠️' : '⏰';
   const statusText = isNoShow ? 'NO SHOW' : 'LATE TO WORK';
   const cutoffText = isNoShow ? '08:00 AM UAE (No-Show Cutoff)' : '07:30 AM UAE (Morning Arrival Cutoff)';
-  const timeRecordedText = isNoShow ? 'Not Recorded (Absent at Cutoff)' : (loginTime || 'Past 07:30 AM');
 
-  const explanation = isNoShow
-    ? `This is an official automated notification to inform you that you have <strong>not logged your attendance</strong> before the <strong>08:00 AM UAE cutoff time</strong> for today. As per Etihad Engineering OJE Training regulations, your attendance record for today has been registered as <strong style="color: #991B1B;">NO SHOW</strong>.`
-    : `This is an official automated notification to inform you that your attendance was logged at <strong>${loginTime || 'past 07:30 AM'}</strong>, which is past the official <strong>07:30 AM UAE morning arrival cutoff</strong>. As per Etihad Engineering OJE Training regulations, your attendance record for today has been registered as <strong style="color: #92400E;">LATE TO WORK</strong>.`;
+  // Determine timing label and value
+  let timingLabel = 'Recorded Timestamp';
+  let timingValue = loginTime || 'Past 07:30 AM';
+
+  if (isNoShow) {
+    timingLabel = 'Recorded Timestamp';
+    timingValue = 'Not Recorded (Absent at Cutoff)';
+  } else if (isManual) {
+    timingLabel = 'Recorded Timing';
+    timingValue = 'Logged after 7:30 AM';
+  } else {
+    timingLabel = 'Recorded Timestamp';
+    timingValue = loginTime || 'Logged after 7:30 AM';
+  }
+
+  let explanation = '';
+  if (isNoShow) {
+    explanation = `This is an official automated notification to inform you that you have <strong>not logged your attendance</strong> before the <strong>08:00 AM UAE cutoff time</strong> for today. As per Etihad Engineering OJE Training regulations, your attendance record for today has been registered as <strong style="color: #991B1B;">NO SHOW</strong>.`;
+  } else if (isManual) {
+    explanation = `This is an official notification to inform you that your attendance for today has been recorded as <strong>logged after 7:30 AM</strong> (past the official 07:30 AM UAE morning arrival cutoff). As per Etihad Engineering OJE Training regulations, your attendance status for today has been registered as <strong style="color: #92400E;">LATE TO WORK</strong>.`;
+  } else {
+    explanation = `This is an official automated notification to inform you that your attendance was logged at <strong>${loginTime || 'past 07:30 AM'}</strong>, which is past the official <strong>07:30 AM UAE morning arrival cutoff</strong>. As per Etihad Engineering OJE Training regulations, your attendance record for today has been registered as <strong style="color: #92400E;">LATE TO WORK</strong>.`;
+  }
 
   return `
 <div style="background-color: #f1f5f9; padding: 25px 15px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #1e293b;">
@@ -107,8 +127,8 @@ export function generateAttendanceEmailHtml(options: {
             <td style="padding: 9px 14px; border-bottom: 1px solid #e2e8f0; color: ${statusColor}; font-weight: 800;">${statusText}</td>
           </tr>
           <tr>
-            <td style="padding: 9px 14px; border-bottom: 1px solid #e2e8f0; color: #64748b; font-weight: 600;">Recorded Timestamp</td>
-            <td style="padding: 9px 14px; border-bottom: 1px solid #e2e8f0; color: #0A192F; font-weight: 700;">${timeRecordedText}</td>
+            <td style="padding: 9px 14px; border-bottom: 1px solid #e2e8f0; color: #64748b; font-weight: 600;">${timingLabel}</td>
+            <td style="padding: 9px 14px; border-bottom: 1px solid #e2e8f0; color: #0A192F; font-weight: 700;">${timingValue}</td>
           </tr>
           <tr>
             <td style="padding: 9px 14px; color: #64748b; font-weight: 600;">Regulation Policy Cutoff</td>
@@ -336,7 +356,8 @@ export class EmailService {
     dateStr: string,
     loginTime: string,
     traineeId?: string,
-    customSettings?: EmailSettings
+    customSettings?: EmailSettings,
+    isManual: boolean = false
   ): Promise<{ success: boolean; error?: string }> {
     if (isWeekend(dateStr)) return { success: false, error: 'Email blocked on weekend.' };
     const holidays = await holidayService.getAllHolidays();
@@ -357,6 +378,7 @@ export class EmailService {
       status: 'Late to Work',
       loginTime,
       traineeId,
+      isManual,
     });
 
     const res = await this.dispatchViaWebhook({

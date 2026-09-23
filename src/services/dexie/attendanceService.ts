@@ -158,16 +158,22 @@ export class DexieAttendanceService implements IAttendanceService {
       const now = new Date();
       const timeStr = getUAETimeString(now, true);
 
+      const loginTime = newStatus === 'Late to Work' ? 'Logged after 7:30 AM' : `Manual (${newStatus})`;
+
       if (existing) {
+        const updatePayload: any = { status: newStatus };
+        if (newStatus === 'Late to Work' || existing.loginTime?.startsWith('Manual')) {
+          updatePayload.loginTime = loginTime;
+        }
         await db.attendance
           .where('[traineeId+date]')
           .equals([traineeId, date])
-          .modify({ status: newStatus });
+          .modify(updatePayload);
       } else {
         await db.attendance.add({
           traineeId,
           date,
-          loginTime: `Manual (${newStatus})`,
+          loginTime,
           status: newStatus,
           authenticationMethod: 'Password Fallback',
           createdAt: new Date().toISOString(),
