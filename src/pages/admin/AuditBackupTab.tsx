@@ -28,9 +28,10 @@ import {
 
 interface AuditBackupTabProps {
   currentUser?: User;
+  refreshTrigger?: number;
 }
 
-export const AuditBackupTab: React.FC<AuditBackupTabProps> = ({ currentUser }) => {
+export const AuditBackupTab: React.FC<AuditBackupTabProps> = ({ currentUser, refreshTrigger }) => {
   const isMaster = currentUser ? currentUser.role === 'MASTER' : true;
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [batches, setBatches] = useState<Batch[]>([]);
@@ -74,7 +75,11 @@ export const AuditBackupTab: React.FC<AuditBackupTabProps> = ({ currentUser }) =
 
   useEffect(() => {
     loadData();
-  }, []);
+    const interval = setInterval(() => {
+      loadData();
+    }, 5000); // 5-second seamless auto-refresh
+    return () => clearInterval(interval);
+  }, [refreshTrigger]);
 
   const handleSaveGeofence = async (e: React.FormEvent) => {
     e.preventDefault();

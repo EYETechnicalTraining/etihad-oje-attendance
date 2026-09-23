@@ -28,7 +28,11 @@ import {
   Sun,
 } from 'lucide-react';
 
-export const TraineeLogsTab: React.FC = () => {
+interface TraineeLogsTabProps {
+  refreshTrigger?: number;
+}
+
+export const TraineeLogsTab: React.FC<TraineeLogsTabProps> = ({ refreshTrigger }) => {
   const [selectedDate, setSelectedDate] = useState<string>(getUAEDateString());
   const [logs, setLogs] = useState<TraineeLogSummary[]>([]);
   const [statusEdits, setStatusEdits] = useState<Record<string, AttendanceStatus>>({});
@@ -52,12 +56,15 @@ export const TraineeLogsTab: React.FC = () => {
   const loadLogs = async (dateStr: string, isDailyAutoTrigger = false) => {
     const data = await attendanceService.getTraineeLogsForDate(dateStr);
     setLogs(data);
-    // Initialize statusEdits with current statuses
-    const initialEdits: Record<string, AttendanceStatus> = {};
-    data.forEach((l) => {
-      initialEdits[l.traineeId] = l.status;
+
+    // Preserve any active or unsaved status dropdown choices by the user
+    setStatusEdits((prev) => {
+      const merged: Record<string, AttendanceStatus> = {};
+      data.forEach((l) => {
+        merged[l.traineeId] = prev[l.traineeId] !== undefined ? prev[l.traineeId] : l.status;
+      });
+      return merged;
     });
-    setStatusEdits(initialEdits);
 
     // Check holiday
     const holidays = await holidayService.getAllHolidays();
@@ -78,13 +85,13 @@ export const TraineeLogsTab: React.FC = () => {
     }
     loadLogs(selectedDate, shouldRunDailyAuto);
 
-    // Auto-refresh attendance logs every 5 minutes in background
+    // Auto-refresh attendance logs seamlessly every 5 seconds in background
     const interval = setInterval(() => {
       loadLogs(selectedDate, false);
-    }, 5 * 60 * 1000);
+    }, 5000);
 
     return () => clearInterval(interval);
-  }, [selectedDate]);
+  }, [selectedDate, refreshTrigger]);
 
   const handlePrevDay = () => {
     setSelectedDate(getPreviousDateString(selectedDate));
@@ -221,8 +228,6 @@ export const TraineeLogsTab: React.FC = () => {
       }
     }
 
-    // 4. Refresh logs table WITHOUT triggering any automated batch emails!
-    await loadLogs(selectedDate, false);
     setSavingId(null);
   };
 

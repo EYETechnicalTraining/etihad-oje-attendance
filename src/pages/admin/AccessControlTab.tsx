@@ -18,9 +18,10 @@ import {
 
 interface AccessControlTabProps {
   currentUser?: User;
+  refreshTrigger?: number;
 }
 
-export const AccessControlTab: React.FC<AccessControlTabProps> = ({ currentUser }) => {
+export const AccessControlTab: React.FC<AccessControlTabProps> = ({ currentUser, refreshTrigger }) => {
   const isMaster = currentUser ? currentUser.role === 'MASTER' : true;
 
   // Trainee logs state
@@ -49,21 +50,18 @@ export const AccessControlTab: React.FC<AccessControlTabProps> = ({ currentUser 
     loadData();
     const interval = setInterval(() => {
       loadData();
-    }, 5 * 60 * 1000); // 5-minute auto-refresh
+    }, 5000); // 5-second seamless auto-refresh
     return () => clearInterval(interval);
-  }, [isMaster]);
+  }, [isMaster, refreshTrigger]);
 
   // ---------------- Trainee Actions ----------------
   const handleResetPassword = async (traineeId: string, name: string) => {
-    if (!confirm(`Reset password for trainee ${name} (ID: ${traineeId}) back to default Etihad@${traineeId}?`)) return;
-
     const res = await authService.resetTraineePassword(traineeId);
     if (res.success) {
       setMsg({
         type: 'success',
         text: `Password for ${name} reset to default: ${res.newPassword}`,
       });
-      await loadData();
     } else {
       setMsg({ type: 'error', text: res.error || 'Failed to reset password.' });
     }
@@ -71,11 +69,8 @@ export const AccessControlTab: React.FC<AccessControlTabProps> = ({ currentUser 
 
   const handleToggleStatus = async (traineeId: string, currentStatus: 'Active' | 'Disabled', name: string) => {
     const nextState = currentStatus === 'Disabled'; // Toggle
-    const actionText = nextState ? 'enable' : 'disable';
 
-    if (!confirm(`Are you sure you want to ${actionText} the account for ${name}?`)) return;
-
-    // Optimistic update
+    // Instant optimistic update on 1 click
     setLogs((prev) =>
       prev.map((l) => (l.traineeId === traineeId ? { ...l, accountStatus: nextState ? 'Active' : 'Disabled' } : l))
     );
@@ -86,7 +81,6 @@ export const AccessControlTab: React.FC<AccessControlTabProps> = ({ currentUser 
         type: 'success',
         text: `Account for ${name} has been ${nextState ? 'enabled' : 'disabled'}.`,
       });
-      await loadData();
     } else {
       setMsg({ type: 'error', text: res.error || 'Failed to update user status.' });
       await loadData();
@@ -103,7 +97,7 @@ export const AccessControlTab: React.FC<AccessControlTabProps> = ({ currentUser 
     setAddingInstructor(false);
 
     if (res.success && res.instructor) {
-      // Optimistic update: show new instructor immediately
+      // Optimistic update: show new instructor immediately on 1 click!
       setInstructors((prev) => [
         res.instructor!,
         ...prev.filter((i) => i.email.toLowerCase() !== res.instructor!.email.toLowerCase()),
@@ -115,14 +109,12 @@ export const AccessControlTab: React.FC<AccessControlTabProps> = ({ currentUser 
       setStaffNumberInput('');
       setNameInput('');
       setEmailInput('');
-      await loadData();
     } else {
       setMsg({ type: 'error', text: res.error || 'Failed to add instructor.' });
     }
   };
 
   const handleResetInstructorPassword = async (username: string, staffNumber: string, name: string) => {
-    if (!confirm(`Reset password for instructor ${name} back to default Etihad@${staffNumber}?`)) return;
     setMsg(null);
     const res = await authService.resetInstructorPassword(username, staffNumber);
     if (res.success) {
@@ -130,7 +122,6 @@ export const AccessControlTab: React.FC<AccessControlTabProps> = ({ currentUser 
         type: 'success',
         text: `Password for instructor ${name} reset to default: ${res.newPassword}`,
       });
-      await loadData();
     } else {
       setMsg({ type: 'error', text: res.error || 'Failed to reset instructor password.' });
     }
@@ -138,11 +129,8 @@ export const AccessControlTab: React.FC<AccessControlTabProps> = ({ currentUser 
 
   const handleToggleInstructorStatus = async (username: string, currentStatus: boolean, name: string) => {
     const nextState = !currentStatus;
-    const actionText = nextState ? 'enable' : 'disable';
-    if (!confirm(`Are you sure you want to ${actionText} the account for instructor ${name}?`)) return;
-
     setMsg(null);
-    // Optimistic update
+    // Instant optimistic update on 1 click
     setInstructors((prev) =>
       prev.map((inst) => (inst.email === username ? { ...inst, active: nextState } : inst))
     );
@@ -153,7 +141,6 @@ export const AccessControlTab: React.FC<AccessControlTabProps> = ({ currentUser 
         type: 'success',
         text: `Instructor account for ${name} has been ${nextState ? 'enabled' : 'disabled'}.`,
       });
-      await loadData();
     } else {
       setMsg({ type: 'error', text: res.error || 'Failed to update instructor status.' });
       await loadData();
@@ -161,9 +148,8 @@ export const AccessControlTab: React.FC<AccessControlTabProps> = ({ currentUser 
   };
 
   const handleRemoveInstructor = async (username: string, name: string) => {
-    if (!confirm(`Are you sure you want to delete instructor ${name} (${username})? This action cannot be undone.`)) return;
     setMsg(null);
-    // Optimistic update: remove immediately
+    // Instant optimistic update on 1 click
     setInstructors((prev) => prev.filter((inst) => inst.email !== username));
 
     const res = await authService.removeInstructor(username);
@@ -172,7 +158,6 @@ export const AccessControlTab: React.FC<AccessControlTabProps> = ({ currentUser 
         type: 'success',
         text: `Instructor account ${name} removed from system.`,
       });
-      await loadData();
     } else {
       setMsg({ type: 'error', text: res.error || 'Failed to delete instructor.' });
       await loadData();

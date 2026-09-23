@@ -49,11 +49,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ currentUser }) =
     return () => window.removeEventListener('hashchange', handleHashChange);
   }, []);
 
-  // Auto-refresh all portal data every 5 minutes (300,000 ms)
+  // Auto-refresh trigger every 5 seconds (5,000 ms) without page reload
   useEffect(() => {
     const interval = setInterval(() => {
       setRefreshKey((prev) => prev + 1);
-    }, 5 * 60 * 1000);
+    }, 5000);
 
     return () => clearInterval(interval);
   }, []);
@@ -61,7 +61,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ currentUser }) =
   const handleManualRefresh = () => {
     setIsRefreshing(true);
     setRefreshKey((prev) => prev + 1);
-    setTimeout(() => setIsRefreshing(false), 500);
+    setTimeout(() => setIsRefreshing(false), 400);
   };
 
   return (
@@ -124,10 +124,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ currentUser }) =
               borderRadius: '20px',
               border: '1px solid #E2E8F0',
             }}
-            title="Data automatically refreshes every 5 minutes in the background"
+            title="Data automatically refreshes every 5 seconds seamlessly without page reload"
           >
             <span style={{ width: '7px', height: '7px', borderRadius: '50%', backgroundColor: '#10B981', display: 'inline-block' }}></span>
-            <span>Auto-refresh: 5m</span>
+            <span>Auto-refresh: 5s</span>
           </span>
 
           <button
@@ -143,12 +143,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ currentUser }) =
         </div>
       </div>
 
-      {/* Tab Content */}
+      {/* Tab Content - Remains mounted with zero screen blinking */}
       <div style={{ marginTop: '1rem' }}>
-        {activeTab === 'trainees' && <TraineeListTab key={`trainees_${refreshKey}`} currentUser={currentUser} />}
-        {activeTab === 'access' && <AccessControlTab key={`access_${refreshKey}`} currentUser={currentUser} />}
-        {activeTab === 'logs' && <TraineeLogsTab key={`logs_${refreshKey}`} />}
-        {activeTab === 'backup' && <AuditBackupTab key={`backup_${refreshKey}`} currentUser={currentUser} />}
+        {activeTab === 'trainees' && <TraineeListTab currentUser={currentUser} refreshTrigger={refreshKey} />}
+        {activeTab === 'access' && <AccessControlTab currentUser={currentUser} refreshTrigger={refreshKey} />}
+        {activeTab === 'logs' && <TraineeLogsTab refreshTrigger={refreshKey} />}
+        {activeTab === 'backup' && <AuditBackupTab currentUser={currentUser} refreshTrigger={refreshKey} />}
       </div>
     </div>
   );

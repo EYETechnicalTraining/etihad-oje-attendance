@@ -77,6 +77,10 @@ export const TraineeDashboard: React.FC<TraineeDashboardProps> = ({ currentUser 
 
   useEffect(() => {
     loadData();
+    const interval = setInterval(() => {
+      loadData();
+    }, 5000); // 5-second seamless auto-refresh
+    return () => clearInterval(interval);
   }, [currentUser]);
 
   const handleRefresh = async () => {
