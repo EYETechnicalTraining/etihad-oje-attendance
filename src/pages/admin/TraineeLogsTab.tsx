@@ -85,6 +85,28 @@ export const TraineeLogsTab: React.FC = () => {
     const targetStatus = statusEdits[traineeId] || fallbackStatus;
     setSavingId(traineeId);
     await attendanceService.updateTraineeAttendanceStatus(traineeId, selectedDate, targetStatus);
+
+    // If status changed to Late to Work or No Show, dispatch notification email
+    const targetTrainee = logs.find((l) => l.traineeId === traineeId);
+    if (targetTrainee && targetTrainee.username) {
+      if (targetStatus === 'Late to Work') {
+        await emailService.sendLateToWorkEmail(
+          targetTrainee.name,
+          targetTrainee.username,
+          selectedDate,
+          targetTrainee.loginTime !== '-' ? targetTrainee.loginTime : '07:31 AM',
+          traineeId
+        );
+      } else if (targetStatus === 'No Show') {
+        await emailService.sendNoShowEmail(
+          targetTrainee.name,
+          targetTrainee.username,
+          selectedDate,
+          traineeId
+        );
+      }
+    }
+
     await loadLogs(selectedDate);
     setSavingId(null);
   };

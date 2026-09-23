@@ -22,6 +22,7 @@ import {
   HelpCircle,
   Mail,
   Send,
+  Clock,
 } from 'lucide-react';
 
 export const AuditBackupTab: React.FC = () => {
@@ -111,24 +112,27 @@ export const AuditBackupTab: React.FC = () => {
     }
   };
 
-  const handleTestEmail = async () => {
+  const [testingEmailType, setTestingEmailType] = useState<'No Show' | 'Late to Work' | null>(null);
+
+  const handleTestNoShowEmail = async () => {
     const targetEmail = testRecipientEmail.trim() || emailConfig.senderOutlookEmail;
     if (!targetEmail) {
       setNotification({ type: 'error', text: 'Please enter a target recipient email address for testing.' });
       return;
     }
 
-    setTestingEmail(true);
+    setTestingEmailType('No Show');
     setNotification(null);
 
-    const res = await emailService.sendSingleEmail(
-      'Test Recipient',
+    const res = await emailService.sendNoShowEmail(
+      'Test Trainee',
       targetEmail,
       getUAEDateString(),
+      'T-9999',
       emailConfig
     );
 
-    setTestingEmail(false);
+    setTestingEmailType(null);
 
     if (res.success) {
       setNotification({
@@ -138,7 +142,41 @@ export const AuditBackupTab: React.FC = () => {
     } else {
       setNotification({
         type: 'error',
-        text: res.error || 'Failed to send test email. Please check your EmailJS keys.',
+        text: res.error || 'Failed to send test email. Please check your Power Automate URL.',
+      });
+    }
+  };
+
+  const handleTestLateEmail = async () => {
+    const targetEmail = testRecipientEmail.trim() || emailConfig.senderOutlookEmail;
+    if (!targetEmail) {
+      setNotification({ type: 'error', text: 'Please enter a target recipient email address for testing.' });
+      return;
+    }
+
+    setTestingEmailType('Late to Work');
+    setNotification(null);
+
+    const res = await emailService.sendLateToWorkEmail(
+      'Test Trainee',
+      targetEmail,
+      getUAEDateString(),
+      '07:42:15 AM',
+      'T-9999',
+      emailConfig
+    );
+
+    setTestingEmailType(null);
+
+    if (res.success) {
+      setNotification({
+        type: 'success',
+        text: `Test Late-to-Work Email sent successfully to ${targetEmail} from ${emailConfig.senderOutlookEmail}!`,
+      });
+    } else {
+      setNotification({
+        type: 'error',
+        text: res.error || 'Failed to send test email. Please check your Power Automate URL.',
       });
     }
   };
@@ -266,12 +304,12 @@ export const AuditBackupTab: React.FC = () => {
 
       {notification && <Notification type={notification.type} message={notification.text} onClose={() => setNotification(null)} />}
 
-      {/* SECTION 1: Automated No-Show Microsoft Power Automate Email Dispatch Settings Card */}
+      {/* SECTION 1: Automated No-Show & Late-to-Work Microsoft Power Automate Email Dispatch Settings Card */}
       <div className="card" style={{ borderLeft: '5px solid #002060', marginBottom: '1.5rem' }}>
         <div className="card-header">
           <span className="card-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <Mail size={20} color="#002060" />
-            <span>Automated 08:00 AM No-Show Microsoft Power Automate Email Dispatch</span>
+            <span>Automated Microsoft Power Automate Email Dispatch (No-Show &amp; Late-to-Work)</span>
           </span>
           <button
             type="button"
@@ -286,9 +324,12 @@ export const AuditBackupTab: React.FC = () => {
         {showEmailGuide && (
           <div style={{ background: '#F8FAFC', border: '1px solid #CBD5E1', padding: '1rem', borderRadius: '8px', marginBottom: '1.25rem', fontSize: '0.85rem' }}>
             <strong style={{ color: '#0A192F', fontSize: '0.9rem' }}>⚡ Step-by-step instructions to set up Microsoft Power Automate Flow:</strong>
+            <p style={{ marginTop: '0.25rem', color: '#475569' }}>
+              Both <strong>No-Show</strong> (dispatched at 08:00 AM) and <strong>Late-to-Work</strong> (dispatched on late login past 07:30 AM) use this single webhook with beautiful, executive corporate HTML layout:
+            </p>
             <ol style={{ marginLeft: '1.25rem', marginTop: '0.5rem', lineHeight: '1.7' }}>
               <li>Open <strong><a href="https://make.powerautomate.com" target="_blank" rel="noreferrer">make.powerautomate.com</a></strong> and log in with your sir's Etihad / Microsoft 365 account.</li>
-              <li>Click <strong>Create</strong> ➔ Select <strong>Instant cloud flow</strong> (or Automated flow).</li>
+              <li>Click <strong>Create</strong> ➔ Select <strong>Instant cloud flow</strong>.</li>
               <li>Add Trigger: Search and select <strong>When an HTTP request is received</strong>.</li>
               <li>Add Action: Search and select <strong>Send an email (V2)</strong> (Office 365 Outlook).
                 <br />• <strong>To</strong>: Click dynamic content ➔ enter <code>@{"triggerBody()?['to_email']"}</code>
@@ -296,7 +337,7 @@ export const AuditBackupTab: React.FC = () => {
                 <br />• <strong>Body</strong>: Click dynamic content ➔ enter <code>@{"triggerBody()?['message']"}</code>
               </li>
               <li>Click <strong>Save</strong>. Power Automate will generate an <strong>HTTP POST URL</strong>.</li>
-              <li>Copy the <strong>HTTP POST URL</strong>, paste it into the field below, and click <strong>Save Email Settings</strong>! Emails will now automatically dispatch directly from your sir's official Outlook account at 08:00 AM!</li>
+              <li>Copy the <strong>HTTP POST URL</strong>, paste it into the field below, and click <strong>Save Email Settings</strong>!</li>
             </ol>
           </div>
         )}
@@ -310,7 +351,7 @@ export const AuditBackupTab: React.FC = () => {
                 value={emailConfig.autoEmailEnabled ? 'true' : 'false'}
                 onChange={(e) => setEmailConfig({ ...emailConfig, autoEmailEnabled: e.target.value === 'true' })}
               >
-                <option value="true">● ENABLED (Auto Send Emails at 08:00 AM)</option>
+                <option value="true">● ENABLED (Auto Send No-Show &amp; Late Emails)</option>
                 <option value="false">○ DISABLED (No Automatic Emails)</option>
               </select>
             </div>
@@ -340,7 +381,7 @@ export const AuditBackupTab: React.FC = () => {
           </div>
 
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '1rem', flexWrap: 'wrap', gap: '0.75rem' }}>
-            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
               <input
                 type="email"
                 className="form-control"
@@ -352,11 +393,20 @@ export const AuditBackupTab: React.FC = () => {
               <button
                 type="button"
                 className="btn btn-gold btn-sm"
-                onClick={handleTestEmail}
-                disabled={testingEmail}
+                onClick={handleTestNoShowEmail}
+                disabled={!!testingEmailType}
               >
                 <Send size={13} />
-                <span>{testingEmail ? 'Sending Test...' : 'Send Test Email'}</span>
+                <span>{testingEmailType === 'No Show' ? 'Sending...' : 'Test No-Show Email'}</span>
+              </button>
+              <button
+                type="button"
+                className="btn btn-outline btn-sm"
+                onClick={handleTestLateEmail}
+                disabled={!!testingEmailType}
+              >
+                <Clock size={13} />
+                <span>{testingEmailType === 'Late to Work' ? 'Sending...' : 'Test Late Email'}</span>
               </button>
             </div>
 

@@ -5,6 +5,7 @@ import { attendanceService } from '../../services/hybridAttendanceService';
 import { allocationService } from '../../services/hybridAllocationService';
 import { taskService } from '../../services/hybridTaskService';
 import { settingsService } from '../../services/hybridSettingsService';
+import { emailService } from '../../services/emailService';
 import { getDeviceLocation, checkGeofence } from '../../utils/geofence';
 import { getUAEDateString, getUAETimeString, formatDisplayDate } from '../../utils/timezone';
 import { Modal } from '../../components/common/Modal';
@@ -134,6 +135,17 @@ export const TraineeDashboard: React.FC<TraineeDashboardProps> = ({ currentUser 
         type: 'success',
         text: `Attendance Registered! Time: ${logRes.attendance.loginTime} • Status: ${logRes.attendance.status}`,
       });
+
+      // Automated Late to Work Email dispatch
+      if (logRes.attendance.status === 'Late to Work' && trainee.email) {
+        emailService.sendLateToWorkEmail(
+          trainee.name,
+          trainee.email,
+          getUAEDateString(),
+          logRes.attendance.loginTime,
+          trainee.traineeId
+        ).catch((err) => console.warn('Failed to send Late to Work email:', err));
+      }
     } else {
       setNotification({ type: 'error', text: logRes.error || 'Failed to log attendance.' });
     }
