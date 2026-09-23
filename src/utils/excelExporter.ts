@@ -47,15 +47,22 @@ export async function generateMatrixExcelReport(options: ExcelExportOptions): Pr
   dates.forEach((dateStr) => {
     const isWknd = isWeekend(dateStr);
     const isHol = holidayMap.has(dateStr);
-    const isFuture = dateStr > today;
 
-    let dateTag = formatDisplayDate(dateStr, false);
-    if (isWknd) dateTag = 'Weekend';
-    else if (isHol) dateTag = 'Holiday';
-    else if (isFuture) dateTag = 'Upcoming';
+    const [year, month, day] = dateStr.split('-').map(Number);
+    const dateObj = new Date(year, month - 1, day);
+    const formattedDate = formatDisplayDate(dateStr, false); // "23 September 2026"
+    const dayOfWeek = dateObj.toLocaleDateString('en-GB', { weekday: 'long' }); // "Wednesday"
 
-    const dateTitle = `${dateStr} (${dateTag})`;
-    
+    let dateTitle = `${formattedDate} (${dayOfWeek})`;
+    if (isWknd) {
+      dateTitle = `${formattedDate} (${dayOfWeek} - Weekend)`;
+    } else if (isHol) {
+      const holName = holidayMap.get(dateStr);
+      dateTitle = holName
+        ? `${formattedDate} (${dayOfWeek} - ${holName})`
+        : `${formattedDate} (${dayOfWeek} - Holiday)`;
+    }
+
     headerRow1.push(dateTitle, '', '');
     headerRow2.push('Status', 'Log In Time', 'Sign Out Time');
   });
@@ -143,9 +150,8 @@ export async function generateMatrixExcelReport(options: ExcelExportOptions): Pr
   /**
    * Computes precise borders for each cell:
    * - Thin border for each row (top and bottom)
-   * - Thick (medium) border framing each full date (left of sub-col 0, right of sub-col 2)
-   * - Thin border between the 3 sub-columns inside each date
-   * - Thick divider separating title columns (Staff No, Name, Batch) from date columns
+   * - Thick (medium) border for each column (Staff Number, Name, Batch, and each Date block)
+   * - Thin border between the 3 sub-columns inside each date block
    */
   function computeCellBorder(r: number, c: number) {
     // 1. Horizontal borders (row grid)
@@ -169,42 +175,52 @@ export async function generateMatrixExcelReport(options: ExcelExportOptions): Pr
       bottomColor = BORDER_COLOR_THICK;
     }
 
-    // 2. Vertical borders (columns & date blocks)
+    // 2. Vertical borders (thick border for each column, thin inside sub-columns)
     let leftStyle = 'thin';
     let leftColor = BORDER_COLOR_THIN;
     let rightStyle = 'thin';
     let rightColor = BORDER_COLOR_THIN;
 
     if (c === 0) {
-      // Far left outer boundary
+      // Column 0: Staff Number
       leftStyle = 'medium';
       leftColor = BORDER_COLOR_THICK;
-    }
-
-    if (c === 2) {
-      // Right edge of Title columns (Staff No, Name, Batch) separating from Date columns
       rightStyle = 'medium';
       rightColor = BORDER_COLOR_THICK;
-    }
-
-    if (c >= 3) {
+    } else if (c === 1) {
+      // Column 1: Name
+      leftStyle = 'medium';
+      leftColor = BORDER_COLOR_THICK;
+      rightStyle = 'medium';
+      rightColor = BORDER_COLOR_THICK;
+    } else if (c === 2) {
+      // Column 2: Batch
+      leftStyle = 'medium';
+      leftColor = BORDER_COLOR_THICK;
+      rightStyle = 'medium';
+      rightColor = BORDER_COLOR_THICK;
+    } else {
+      // Date Columns: treated as a single column containing 3 sub-columns
       const subCol = (c - 3) % 3;
       if (subCol === 0) {
-        // Start of Date column block (Status) -> thick left border
+        // Outer left boundary of Date column (Status)
         leftStyle = 'medium';
         leftColor = BORDER_COLOR_THICK;
-      }
-      if (subCol === 2) {
-        // End of Date column block (Sign Out Time) -> thick right border
+        rightStyle = 'thin';
+        rightColor = BORDER_COLOR_THIN;
+      } else if (subCol === 1) {
+        // Inner divider (Log In Time) - thin on both sides
+        leftStyle = 'thin';
+        leftColor = BORDER_COLOR_THIN;
+        rightStyle = 'thin';
+        rightColor = BORDER_COLOR_THIN;
+      } else if (subCol === 2) {
+        // Outer right boundary of Date column (Sign Out Time)
+        leftStyle = 'thin';
+        leftColor = BORDER_COLOR_THIN;
         rightStyle = 'medium';
         rightColor = BORDER_COLOR_THICK;
       }
-    }
-
-    if (c === totalCols - 1) {
-      // Far right outer boundary
-      rightStyle = 'medium';
-      rightColor = BORDER_COLOR_THICK;
     }
 
     return {
