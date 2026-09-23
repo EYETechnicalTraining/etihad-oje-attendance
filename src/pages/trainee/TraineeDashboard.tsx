@@ -262,6 +262,12 @@ export const TraineeDashboard: React.FC<TraineeDashboardProps> = ({ currentUser 
 
   return (
     <div className="main-content" style={{ maxWidth: '800px', paddingBottom: '2.5rem' }}>
+      {/* Mobile Top Developer Credit */}
+      <div className="trainee-mobile-credit">
+        <div className="credit-line-dev">Developed By <strong>Shlok Raskar</strong></div>
+        <div className="credit-line-copy">Copyrights Shlok Raskar 2026</div>
+      </div>
+
       {notification && <Notification type={notification.type} message={notification.text} onClose={() => setNotification(null)} />}
 
       {/* Trainee Welcome Banner Header */}
