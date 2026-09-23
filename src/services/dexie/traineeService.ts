@@ -208,14 +208,17 @@ export class DexieTraineeService implements ITraineeService {
       const targetTraineeId = traineeId || remark?.traineeId;
       const targetRemarkText = remarkText || remark?.remark;
 
-      await db.remarks.delete(remarkId);
+      if (remarkId > 0) {
+        await db.remarks.delete(remarkId);
+      }
 
       // If traineeId and remarkText are provided, delete any duplicate remarks in Dexie
       if (targetTraineeId && targetRemarkText) {
+        const cleanText = targetRemarkText.trim();
         await db.remarks
           .where('traineeId')
           .equals(targetTraineeId)
-          .and((r) => r.remark === targetRemarkText)
+          .and((r) => r.remark.trim() === cleanText)
           .delete();
       }
 

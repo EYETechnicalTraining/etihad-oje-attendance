@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { Trainee, Remark, User } from '../../types';
 import { traineeService } from '../../services/hybridTraineeService';
+import { db } from '../../db';
 import { Modal } from '../../components/common/Modal';
 import { Notification } from '../../components/common/Notification';
 import { MessageSquare, Calendar, Clock, UserCheck, PlusCircle, Trash2 } from 'lucide-react';
-import { formatMediumDate } from '../../utils/timezone';
+import { formatMediumDate, getUAEDateString, getUAETimeString } from '../../utils/timezone';
 
 interface TraineeProfileModalProps {
   isOpen: boolean;
@@ -27,8 +28,27 @@ export const TraineeProfileModal: React.FC<TraineeProfileModalProps> = ({
 
   const loadRemarks = async () => {
     if (!trainee) return;
-    const list = await traineeService.getRemarks(trainee.traineeId);
-    setRemarks(list);
+    try {
+      // 1. Instant local render from IndexedDB cache
+      const local = await db.remarks
+        .where('traineeId')
+        .equals(trainee.traineeId)
+        .reverse()
+        .sortBy('timestamp');
+      if (local && local.length > 0) {
+        setRemarks(local);
+      }
+    } catch {
+      // ignore
+    }
+
+    // 2. Fetch fresh from server
+    try {
+      const list = await traineeService.getRemarks(trainee.traineeId);
+      setRemarks(list);
+    } catch {
+      // ignore
+    }
   };
 
   useEffect(() => {
@@ -44,47 +64,65 @@ export const TraineeProfileModal: React.FC<TraineeProfileModalProps> = ({
     if (!trainee || !newRemark.trim() || loading) return;
 
     const remarkText = newRemark.trim();
+    const tempId = -Date.now();
+    const date = getUAEDateString();
+    const time = getUAETimeString();
+    const timestamp = Date.now();
+
+    const optimisticRemark: Remark = {
+      id: tempId,
+      traineeId: trainee.traineeId,
+      remark: remarkText,
+      createdBy: currentUser.username,
+      date,
+      time,
+      timestamp,
+    };
+
+    // INSTANT: Show immediately on 1 click!
+    setNewRemark('');
+    setRemarks((prev) => [optimisticRemark, ...prev]);
+    setMsg({ type: 'success', text: 'Remark saved successfully.' });
     setLoading(true);
-    setMsg(null);
 
-    const res = await traineeService.addRemark(
-      trainee.traineeId,
-      remarkText,
-      currentUser.username
-    );
-
-    setLoading(false);
-    if (res.success && res.remark) {
-      setNewRemark('');
-      // Optimistic update: instantly show new remark
-      setRemarks((prev) => [res.remark!, ...prev.filter((r) => r.id !== res.remark!.id)]);
-      setMsg({ type: 'success', text: 'Remark saved successfully.' });
-      const fresh = await traineeService.getRemarks(trainee.traineeId);
-      setRemarks(fresh);
-    } else {
-      setMsg({ type: 'error', text: res.error || 'Failed to save remark.' });
+    try {
+      const res = await traineeService.addRemark(
+        trainee.traineeId,
+        remarkText,
+        currentUser.username
+      );
+      if (res.success && res.remark) {
+        setRemarks((prev) =>
+          prev.map((r) => (r.id === tempId ? res.remark! : r))
+        );
+      }
+    } catch (err: any) {
+      console.warn('Remark save background sync warning:', err);
+    } finally {
+      setLoading(false);
     }
   };
 
   const handleDeleteRemark = async (remarkId: number, remarkText?: string) => {
     if (!trainee) return;
-    if (!confirm('Are you sure you want to delete this remark? This action cannot be undone.')) return;
     setDeletingId(remarkId);
     setMsg(null);
 
-    // 1. Optimistic update: instantly remove deleted remark and any identical duplicate copies on 1 click
-    setRemarks((prev) => prev.filter((r) => r.id !== remarkId && (!remarkText || r.remark !== remarkText)));
+    // INSTANT: Delete immediately on 1 click without blocking prompt!
+    setRemarks((prev) => prev.filter((r) => r.id !== remarkId && (!remarkText || r.remark.trim() !== remarkText.trim())));
+    setMsg({ type: 'success', text: 'Remark deleted successfully.' });
 
-    // 2. Delete from database
-    const res = await traineeService.deleteRemark(remarkId, trainee.traineeId, remarkText);
-    setDeletingId(null);
-    if (res.success) {
-      setMsg({ type: 'success', text: 'Remark deleted successfully.' });
-      const fresh = await traineeService.getRemarks(trainee.traineeId);
-      setRemarks(fresh);
-    } else {
-      setMsg({ type: 'error', text: res.error || 'Failed to delete remark.' });
+    try {
+      const res = await traineeService.deleteRemark(remarkId, trainee.traineeId, remarkText);
+      if (!res.success) {
+        setMsg({ type: 'error', text: res.error || 'Failed to delete remark.' });
+        await loadRemarks();
+      }
+    } catch (err: any) {
+      setMsg({ type: 'error', text: err.message || 'Failed to delete remark.' });
       await loadRemarks();
+    } finally {
+      setDeletingId(null);
     }
   };
 

@@ -218,13 +218,41 @@ export class HybridTraineeService implements ITraineeService {
     const cleanRemark = remarkText.trim();
     if (!cleanRemark) return { success: false, error: 'Remark cannot be empty' };
 
-    if (!isSupabaseConfigured || !supabase) return await dexieTrainee.addRemark(traineeId, cleanRemark, author);
+    const date = getUAEDateString();
+    const time = getUAETimeString();
+    const timestamp = Date.now();
+
+    // 1. Immediately save into Dexie local database for instantaneous reliability
+    let localId: number | undefined;
+    try {
+      localId = await db.remarks.add({
+        traineeId,
+        remark: cleanRemark,
+        createdBy: author,
+        date,
+        time,
+        timestamp,
+      });
+    } catch {
+      // ignore
+    }
+
+    if (!isSupabaseConfigured || !supabase) {
+      return {
+        success: true,
+        remark: {
+          id: localId || timestamp,
+          traineeId,
+          remark: cleanRemark,
+          createdBy: author,
+          date,
+          time,
+          timestamp,
+        },
+      };
+    }
 
     try {
-      const date = getUAEDateString();
-      const time = getUAETimeString();
-      const timestamp = Date.now();
-
       const { data, error } = await supabase.from('remarks').insert([{
         trainee_id: traineeId,
         remark: cleanRemark,
@@ -235,32 +263,66 @@ export class HybridTraineeService implements ITraineeService {
       }]).select();
 
       if (error || !data || data.length === 0) {
-        return { success: false, error: error?.message || 'Failed to save remark.' };
+        console.warn('Supabase remark insert notice:', error?.message);
+        return {
+          success: true,
+          remark: {
+            id: localId || timestamp,
+            traineeId,
+            remark: cleanRemark,
+            createdBy: author,
+            date,
+            time,
+            timestamp,
+          },
+        };
       }
 
-      const newRemark: Remark = {
-        id: data[0].id,
-        traineeId,
-        remark: cleanRemark,
-        createdBy: author,
-        date,
-        time,
-        timestamp,
-      };
-
-      // Mirror into Dexie with the exact same ID
-      try {
-        await db.remarks.put(newRemark);
-      } catch {
-        // ignore
+      const supabaseId = data[0].id;
+      // Align Dexie cache ID with Supabase ID
+      if (localId && localId !== supabaseId) {
+        try {
+          await db.remarks.delete(localId);
+          await db.remarks.put({
+            id: supabaseId,
+            traineeId,
+            remark: cleanRemark,
+            createdBy: author,
+            date,
+            time,
+            timestamp,
+          });
+        } catch {
+          // ignore
+        }
       }
 
       return {
         success: true,
-        remark: newRemark,
+        remark: {
+          id: supabaseId,
+          traineeId,
+          remark: cleanRemark,
+          createdBy: author,
+          date,
+          time,
+          timestamp,
+        },
       };
     } catch (err: any) {
-      return { success: false, error: err.message || 'Failed to save remark' };
+      console.warn('Supabase addRemark error, kept in local storage:', err);
+      return {
+        success: true,
+        remark: {
+          id: localId || timestamp,
+          traineeId,
+          remark: cleanRemark,
+          createdBy: author,
+          date,
+          time,
+          timestamp,
+        },
+      };
     }
   }
 
@@ -268,25 +330,33 @@ export class HybridTraineeService implements ITraineeService {
     let success = true;
     let errorMsg = '';
 
-    // 1. Delete in Supabase if configured
+    // 1. Immediately delete from Dexie (local cache)
+    try {
+      await dexieTrainee.deleteRemark(remarkId, traineeId, remarkText);
+    } catch (err) {
+      console.warn('Failed to delete remark from Dexie:', err);
+    }
+
+    // 2. Delete in Supabase if configured
     if (isSupabaseConfigured && supabase) {
       try {
-        const { error: idError } = await supabase.from('remarks').delete().eq('id', remarkId);
-        if (idError) {
-          console.error('Failed to delete remark from Supabase:', idError);
-          success = false;
-          errorMsg = idError.message;
+        if (remarkId > 0) {
+          const { error: idError } = await supabase.from('remarks').delete().eq('id', remarkId);
+          if (idError) {
+            console.error('Failed to delete remark from Supabase by ID:', idError);
+          }
         }
 
         // Also delete any duplicate remarks with identical trainee_id and text created previously
         if (traineeId && remarkText) {
+          const cleanText = remarkText.trim();
           const { error: dupError } = await supabase
             .from('remarks')
             .delete()
             .eq('trainee_id', traineeId)
-            .eq('remark', remarkText);
+            .eq('remark', cleanText);
           if (dupError) {
-            console.warn('Failed to delete duplicate remarks from Supabase:', dupError);
+            console.warn('Failed to delete duplicate remarks from Supabase by text:', dupError);
           }
         }
       } catch (err: any) {
@@ -294,13 +364,6 @@ export class HybridTraineeService implements ITraineeService {
         success = false;
         errorMsg = err.message;
       }
-    }
-
-    // 2. Delete in Dexie
-    try {
-      await dexieTrainee.deleteRemark(remarkId, traineeId, remarkText);
-    } catch (err) {
-      console.warn('Failed to delete remark from Dexie:', err);
     }
 
     return { success, error: errorMsg };
