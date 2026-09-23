@@ -23,6 +23,7 @@ import {
   Mail,
   Send,
   Clock,
+  RotateCcw,
 } from 'lucide-react';
 
 export const AuditBackupTab: React.FC = () => {
@@ -181,6 +182,23 @@ export const AuditBackupTab: React.FC = () => {
     }
   };
 
+  const [resettingLock, setResettingLock] = useState(false);
+
+  const handleResetEmailLock = async () => {
+    setResettingLock(true);
+    const res = await emailService.resetTodayHistory();
+    setResettingLock(false);
+    if (res.success) {
+      setNotification({
+        type: 'success',
+        text: "Today's email duplicate dispatch lock has been reset! You can now freely test and re-trigger emails.",
+      });
+      loadData();
+    } else {
+      setNotification({ type: 'error', text: res.error || 'Failed to reset email lock.' });
+    }
+  };
+
   const handleExportJSON = async () => {
     try {
       const jsonStr = await backupService.exportDatabase();
@@ -331,13 +349,31 @@ export const AuditBackupTab: React.FC = () => {
               <li>Open <strong><a href="https://make.powerautomate.com" target="_blank" rel="noreferrer">make.powerautomate.com</a></strong> and log in with your sir's Etihad / Microsoft 365 account.</li>
               <li>Click <strong>Create</strong> ➔ Select <strong>Instant cloud flow</strong>.</li>
               <li>Add Trigger: Search and select <strong>When an HTTP request is received</strong>.</li>
+              <li>
+                In the trigger, paste this into <strong>Request Body JSON Schema</strong> (so Power Automate generates the dynamic tokens):
+                <pre style={{ background: '#1E293B', color: '#F8FAFC', padding: '0.5rem', borderRadius: '4px', fontSize: '0.75rem', overflowX: 'auto', marginTop: '0.25rem' }}>
+{`{
+  "type": "object",
+  "properties": {
+    "to_email": { "type": "string" },
+    "to_name": { "type": "string" },
+    "from_email": { "type": "string" },
+    "date": { "type": "string" },
+    "status": { "type": "string" },
+    "subject": { "type": "string" },
+    "message": { "type": "string" }
+  }
+}`}
+                </pre>
+              </li>
               <li>Add Action: Search and select <strong>Send an email (V2)</strong> (Office 365 Outlook).
-                <br />• <strong>To</strong>: Click dynamic content ➔ enter <code>@{"triggerBody()?['to_email']"}</code>
-                <br />• <strong>Subject</strong>: Click dynamic content ➔ enter <code>@{"triggerBody()?['subject']"}</code>
-                <br />• <strong>Body</strong>: Click dynamic content ➔ enter <code>@{"triggerBody()?['message']"}</code>
+                <br />• <strong>To</strong>: Select <code>to_email</code> from Dynamic Content
+                <br />• <strong>Subject</strong>: Select <code>subject</code> from Dynamic Content
+                <br />• <strong>Body</strong>: Select <code>message</code> from Dynamic Content
               </li>
               <li>Click <strong>Save</strong>. Power Automate will generate an <strong>HTTP POST URL</strong>.</li>
               <li>Copy the <strong>HTTP POST URL</strong>, paste it into the field below, and click <strong>Save Email Settings</strong>!</li>
+              <li><em>Tip: In make.powerautomate.com, click your flow to view <strong>Run history</strong> and verify live deliveries.</em></li>
             </ol>
           </div>
         )}
@@ -410,10 +446,22 @@ export const AuditBackupTab: React.FC = () => {
               </button>
             </div>
 
-            <button type="submit" className="btn btn-navy btn-md" disabled={savingEmail}>
-              <Save size={16} />
-              <span>{savingEmail ? 'Saving Settings...' : 'Save Email Settings'}</span>
-            </button>
+            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+              <button
+                type="button"
+                className="btn btn-outline btn-sm"
+                onClick={handleResetEmailLock}
+                disabled={resettingLock}
+                title="Reset today's duplicate email dispatch prevention lock"
+              >
+                <RotateCcw size={13} />
+                <span>{resettingLock ? 'Resetting...' : "Reset Today's Email Lock"}</span>
+              </button>
+              <button type="submit" className="btn btn-navy btn-md" disabled={savingEmail}>
+                <Save size={16} />
+                <span>{savingEmail ? 'Saving Settings...' : 'Save Email Settings'}</span>
+              </button>
+            </div>
           </div>
         </form>
       </div>

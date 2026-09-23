@@ -14,6 +14,7 @@ import {
 } from '../../utils/timezone';
 import { Badge } from '../../components/common/Badge';
 import { Modal } from '../../components/common/Modal';
+import { Notification } from '../../components/common/Notification';
 import {
   ChevronLeft,
   ChevronRight,
@@ -32,6 +33,7 @@ export const TraineeLogsTab: React.FC = () => {
   const [statusEdits, setStatusEdits] = useState<Record<string, AttendanceStatus>>({});
   const [savingId, setSavingId] = useState<string | null>(null);
   const [holidayName, setHolidayName] = useState<string | null>(null);
+  const [notification, setNotification] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   // Modals state
   const [allocationModal, setAllocationModal] = useState<{ open: boolean; traineeId: string; name: string } | null>(null);
@@ -84,28 +86,59 @@ export const TraineeLogsTab: React.FC = () => {
   const handleSaveStatus = async (traineeId: string, fallbackStatus: AttendanceStatus) => {
     const targetStatus = statusEdits[traineeId] || fallbackStatus;
     setSavingId(traineeId);
+    setNotification(null);
     await attendanceService.updateTraineeAttendanceStatus(traineeId, selectedDate, targetStatus);
 
     // If status changed to Late to Work or No Show, dispatch notification email
     const targetTrainee = logs.find((l) => l.traineeId === traineeId);
     if (targetTrainee && targetTrainee.username) {
       if (targetStatus === 'Late to Work') {
-        await emailService.sendLateToWorkEmail(
+        const res = await emailService.sendLateToWorkEmail(
           targetTrainee.name,
           targetTrainee.username,
           selectedDate,
           'Logged after 7:30 AM',
           traineeId,
           undefined,
-          true
+          true, // isManual
+          true  // force
         );
+        if (res.success) {
+          setNotification({
+            type: 'success',
+            text: `Status for ${targetTrainee.name} updated to "Late to Work". Email notification dispatched to ${targetTrainee.username}!`,
+          });
+        } else {
+          setNotification({
+            type: 'error',
+            text: `Status updated to "Late to Work", but email dispatch returned: ${res.error || 'Failed to dispatch'}`,
+          });
+        }
       } else if (targetStatus === 'No Show') {
-        await emailService.sendNoShowEmail(
+        const res = await emailService.sendNoShowEmail(
           targetTrainee.name,
           targetTrainee.username,
           selectedDate,
-          traineeId
+          traineeId,
+          undefined,
+          true // force
         );
+        if (res.success) {
+          setNotification({
+            type: 'success',
+            text: `Status for ${targetTrainee.name} updated to "No Show". Email notification dispatched to ${targetTrainee.username}!`,
+          });
+        } else {
+          setNotification({
+            type: 'error',
+            text: `Status updated to "No Show", but email dispatch returned: ${res.error || 'Failed to dispatch'}`,
+          });
+        }
+      } else {
+        setNotification({
+          type: 'success',
+          text: `Status for ${targetTrainee.name} updated to "${targetStatus}".`,
+        });
       }
     }
 
@@ -131,6 +164,7 @@ export const TraineeLogsTab: React.FC = () => {
 
   return (
     <div>
+      {notification && <Notification type={notification.type} message={notification.text} onClose={() => setNotification(null)} />}
       <div style={{ marginBottom: '1rem', textAlign: 'center' }}>
         <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: '#0A192F' }}>Trainee Attendance & Activity Logs</h2>
         <p style={{ fontSize: '0.85rem', color: '#64748B' }}>

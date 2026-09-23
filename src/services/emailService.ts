@@ -287,7 +287,8 @@ export class EmailService {
     toEmail: string,
     dateStr: string,
     traineeId?: string,
-    customSettings?: EmailSettings
+    customSettings?: EmailSettings,
+    force: boolean = false
   ): Promise<{ success: boolean; error?: string }> {
     if (isWeekend(dateStr)) return { success: false, error: 'Email blocked on weekend.' };
     const holidays = await holidayService.getAllHolidays();
@@ -296,9 +297,9 @@ export class EmailService {
     const settings = customSettings || (await this.getEmailSettings());
     if (!settings.autoEmailEnabled) return { success: false, error: 'Automated email dispatch is disabled in settings.' };
 
-    // Prevent duplicate dispatch for this trainee today
+    // Prevent duplicate dispatch for this trainee today unless forced
     const key = `${toEmail}_No Show`;
-    if (settings.sentEmailHistory?.[dateStr]?.includes(key)) {
+    if (!force && settings.sentEmailHistory?.[dateStr]?.includes(key)) {
       return { success: true };
     }
 
@@ -357,7 +358,8 @@ export class EmailService {
     loginTime: string,
     traineeId?: string,
     customSettings?: EmailSettings,
-    isManual: boolean = false
+    isManual: boolean = false,
+    force: boolean = false
   ): Promise<{ success: boolean; error?: string }> {
     if (isWeekend(dateStr)) return { success: false, error: 'Email blocked on weekend.' };
     const holidays = await holidayService.getAllHolidays();
@@ -366,9 +368,9 @@ export class EmailService {
     const settings = customSettings || (await this.getEmailSettings());
     if (settings.autoLateEmailEnabled === false) return { success: false, error: 'Late email dispatch disabled.' };
 
-    // Prevent duplicate dispatch for this trainee today
+    // Prevent duplicate dispatch for this trainee today unless forced or manual
     const key = `${toEmail}_Late to Work`;
-    if (settings.sentEmailHistory?.[dateStr]?.includes(key)) {
+    if (!force && !isManual && settings.sentEmailHistory?.[dateStr]?.includes(key)) {
       return { success: true };
     }
 
@@ -415,6 +417,23 @@ export class EmailService {
     }
 
     return res;
+  }
+
+  /**
+   * Resets today's sent email history and lastNoShowNotificationDate so emails can be re-sent for testing
+   */
+  async resetTodayHistory(targetDate?: string): Promise<{ success: boolean; error?: string }> {
+    try {
+      const date = targetDate || getUAEDateString();
+      const settings = await this.getEmailSettings();
+      settings.lastNoShowNotificationDate = '';
+      if (settings.sentEmailHistory) {
+        delete settings.sentEmailHistory[date];
+      }
+      return await this.saveEmailSettings(settings);
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
   }
 
   /**
