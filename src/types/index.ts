@@ -9,7 +9,8 @@ export type AttendanceStatus =
   | 'Military Services'
   | 'Training'
   | 'Stand Down'
-  | 'Weekend';
+  | 'Weekend'
+  | 'N/A';
 
 export type InsideOutside = 'Inside' | 'Outside';
 

@@ -5,6 +5,7 @@ import { backupService } from '../../services/hybridBackupService';
 import { traineeService } from '../../services/hybridTraineeService';
 import { attendanceService } from '../../services/hybridAttendanceService';
 import { settingsService, DEFAULT_GEOFENCE_SETTINGS } from '../../services/hybridSettingsService';
+import { emailService, EmailSettings, DEFAULT_EMAIL_SETTINGS } from '../../services/emailService';
 import { getUAEDateString } from '../../utils/timezone';
 import { exportToCSV } from '../../utils/csv';
 import { generateMatrixExcelReport } from '../../utils/excelExporter';
@@ -19,6 +20,8 @@ import {
   MapPin,
   Save,
   HelpCircle,
+  Mail,
+  Send,
 } from 'lucide-react';
 
 export const AuditBackupTab: React.FC = () => {
@@ -30,6 +33,13 @@ export const AuditBackupTab: React.FC = () => {
   const [geofence, setGeofence] = useState<GeofenceSettings>(DEFAULT_GEOFENCE_SETTINGS);
   const [savingGeofence, setSavingGeofence] = useState(false);
   const [showMapGuide, setShowMapGuide] = useState(false);
+
+  // Email Settings State
+  const [emailConfig, setEmailConfig] = useState<EmailSettings>(DEFAULT_EMAIL_SETTINGS);
+  const [savingEmail, setSavingEmail] = useState(false);
+  const [testingEmail, setTestingEmail] = useState(false);
+  const [showEmailGuide, setShowEmailGuide] = useState(false);
+  const [testRecipientEmail, setTestRecipientEmail] = useState('');
 
   // Backup import state
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
@@ -48,9 +58,11 @@ export const AuditBackupTab: React.FC = () => {
     const list = await auditService.getAuditLogs();
     const bList = await traineeService.getBatches();
     const geo = await settingsService.getGeofenceSettings();
+    const em = await emailService.getEmailSettings();
     setLogs(list);
     setBatches(bList);
     setGeofence(geo);
+    setEmailConfig(em);
   };
 
   useEffect(() => {
@@ -68,12 +80,65 @@ export const AuditBackupTab: React.FC = () => {
     if (res.success) {
       setNotification({
         type: 'success',
-        text: `Geofence settings updated successfully! Attendance Log In Radius: ${geofence.loginRadiusMeters}m • Daily Sign Out Radius: ${geofence.signOutRadiusMeters}m.`,
+        text: `Geofence settings updated! Log In Radius: ${geofence.loginRadiusMeters}m • Sign Out Radius: ${geofence.signOutRadiusMeters}m.`,
       });
     } else {
       setNotification({
         type: 'error',
         text: res.error || 'Failed to save geofence settings.',
+      });
+    }
+  };
+
+  const handleSaveEmailSettings = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSavingEmail(true);
+    setNotification(null);
+
+    const res = await emailService.saveEmailSettings(emailConfig);
+    setSavingEmail(false);
+
+    if (res.success) {
+      setNotification({
+        type: 'success',
+        text: `Automated Outlook Email Dispatch settings updated successfully! Sender: ${emailConfig.senderOutlookEmail}.`,
+      });
+    } else {
+      setNotification({
+        type: 'error',
+        text: res.error || 'Failed to save email settings.',
+      });
+    }
+  };
+
+  const handleTestEmail = async () => {
+    const targetEmail = testRecipientEmail.trim() || emailConfig.senderOutlookEmail;
+    if (!targetEmail) {
+      setNotification({ type: 'error', text: 'Please enter a target recipient email address for testing.' });
+      return;
+    }
+
+    setTestingEmail(true);
+    setNotification(null);
+
+    const res = await emailService.sendSingleEmail(
+      'Test Recipient',
+      targetEmail,
+      getUAEDateString(),
+      emailConfig
+    );
+
+    setTestingEmail(false);
+
+    if (res.success) {
+      setNotification({
+        type: 'success',
+        text: `Test No-Show Email sent successfully to ${targetEmail} from ${emailConfig.senderOutlookEmail}!`,
+      });
+    } else {
+      setNotification({
+        type: 'error',
+        text: res.error || 'Failed to send test email. Please check your EmailJS keys.',
       });
     }
   };
@@ -193,15 +258,138 @@ export const AuditBackupTab: React.FC = () => {
   return (
     <div>
       <div style={{ marginBottom: '1.25rem' }}>
-        <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: '#0A192F' }}>Data Management & Custom Excel Reports</h2>
+        <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: '#0A192F' }}>Data Management, Geofence & Automated Outlook Email Dispatch</h2>
         <p style={{ fontSize: '0.85rem', color: '#64748B' }}>
-          Configure GPS Geofencing radii, generate multi-date matrix Excel spreadsheets, backup/restore database, and view system audit history.
+          Configure automated 08:00 AM No-Show email notifications from your supervisor's Outlook email, set GPS Geofencing radii, and export custom matrix Excel reports.
         </p>
       </div>
 
       {notification && <Notification type={notification.type} message={notification.text} onClose={() => setNotification(null)} />}
 
-      {/* NEW: Geofence Location Restriction Control Card */}
+      {/* SECTION 1: Automated No-Show Outlook Email Dispatch Settings Card */}
+      <div className="card" style={{ borderLeft: '5px solid #002060', marginBottom: '1.5rem' }}>
+        <div className="card-header">
+          <span className="card-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <Mail size={20} color="#002060" />
+            <span>Automated 08:00 AM No-Show Outlook Email Dispatch</span>
+          </span>
+          <button
+            type="button"
+            className="btn btn-outline btn-sm"
+            onClick={() => setShowEmailGuide(!showEmailGuide)}
+          >
+            <HelpCircle size={14} />
+            <span>{showEmailGuide ? 'Hide Outlook Setup Guide' : 'Outlook Setup Steps'}</span>
+          </button>
+        </div>
+
+        {showEmailGuide && (
+          <div style={{ background: '#F8FAFC', border: '1px solid #CBD5E1', padding: '1rem', borderRadius: '8px', marginBottom: '1.25rem', fontSize: '0.85rem' }}>
+            <strong style={{ color: '#0A192F', fontSize: '0.9rem' }}>📧 Step-by-step instructions to connect your Sir's Outlook Email:</strong>
+            <ol style={{ marginLeft: '1.25rem', marginTop: '0.5rem', lineHeight: '1.7' }}>
+              <li>Create a free account at <strong><a href="https://www.emailjs.com" target="_blank" rel="noreferrer">emailjs.com</a></strong> (100% free, 200 emails/month).</li>
+              <li>In EmailJS Dashboard, click <strong>Add New Service</strong> ➔ Select <strong>Outlook / Microsoft 365</strong>.</li>
+              <li>Log in with your sir's Outlook email address (e.g. <code>supervisor@etihad.ae</code> or <code>@outlook.com</code>) to authorize sending.</li>
+              <li>Copy the <strong>Service ID</strong> (e.g. <code>service_xxxxxxx</code>).</li>
+              <li>Go to <strong>Email Templates</strong> ➔ Create Template with subject <code>[Notice] Marked as No Show - Etihad OJE Training</code> and text:
+                <br /><code>Dear {"{{to_name}}"}, You have not logged attendance before 08:00 AM for today ({"{{date}}"}). Your status is recorded as NO SHOW.</code>
+              </li>
+              <li>Copy the <strong>Template ID</strong> (e.g. <code>template_xxxxxxx</code>) and <strong>Public Key</strong> (under Account Settings).</li>
+              <li>Paste these keys below and click <strong>Save Email Settings</strong>. Emails will now automatically dispatch from your sir's Outlook email at 08:00 AM for any No Show students!</li>
+            </ol>
+          </div>
+        )}
+
+        <form onSubmit={handleSaveEmailSettings}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem' }}>
+            <div className="form-group">
+              <label className="form-label">Auto Email Dispatch Switch</label>
+              <select
+                className="form-control"
+                value={emailConfig.autoEmailEnabled ? 'true' : 'false'}
+                onChange={(e) => setEmailConfig({ ...emailConfig, autoEmailEnabled: e.target.value === 'true' })}
+              >
+                <option value="true">● ENABLED (Auto Send Emails at 08:00 AM)</option>
+                <option value="false">○ DISABLED (No Automatic Emails)</option>
+              </select>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Sir's Sender Outlook Email *</label>
+              <input
+                type="email"
+                className="form-control"
+                placeholder="e.g. supervisor@etihad.ae"
+                value={emailConfig.senderOutlookEmail}
+                onChange={(e) => setEmailConfig({ ...emailConfig, senderOutlookEmail: e.target.value })}
+                required
+              />
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">EmailJS Service ID (Outlook)</label>
+              <input
+                type="text"
+                className="form-control"
+                placeholder="e.g. service_outlook123"
+                value={emailConfig.emailjsServiceId}
+                onChange={(e) => setEmailConfig({ ...emailConfig, emailjsServiceId: e.target.value })}
+              />
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">EmailJS Template ID</label>
+              <input
+                type="text"
+                className="form-control"
+                placeholder="e.g. template_noshow456"
+                value={emailConfig.emailjsTemplateId}
+                onChange={(e) => setEmailConfig({ ...emailConfig, emailjsTemplateId: e.target.value })}
+              />
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">EmailJS Public Key</label>
+              <input
+                type="text"
+                className="form-control"
+                placeholder="e.g. pub_key_789xxx"
+                value={emailConfig.emailjsPublicKey}
+                onChange={(e) => setEmailConfig({ ...emailConfig, emailjsPublicKey: e.target.value })}
+              />
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '1rem', flexWrap: 'wrap', gap: '0.75rem' }}>
+            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+              <input
+                type="email"
+                className="form-control"
+                style={{ width: '220px', padding: '0.35rem 0.6rem', fontSize: '0.8rem' }}
+                placeholder="Test recipient email..."
+                value={testRecipientEmail}
+                onChange={(e) => setTestRecipientEmail(e.target.value)}
+              />
+              <button
+                type="button"
+                className="btn btn-gold btn-sm"
+                onClick={handleTestEmail}
+                disabled={testingEmail}
+              >
+                <Send size={13} />
+                <span>{testingEmail ? 'Sending Test...' : 'Send Test Email'}</span>
+              </button>
+            </div>
+
+            <button type="submit" className="btn btn-navy btn-md" disabled={savingEmail}>
+              <Save size={16} />
+              <span>{savingEmail ? 'Saving Settings...' : 'Save Email Settings'}</span>
+            </button>
+          </div>
+        </form>
+      </div>
+
+      {/* SECTION 2: Geofence Location Restriction Control Card */}
       <div className="card" style={{ borderLeft: '5px solid #102A43', marginBottom: '1.5rem' }}>
         <div className="card-header">
           <span className="card-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -229,7 +417,7 @@ export const AuditBackupTab: React.FC = () => {
                 <br />• First number is <strong>Latitude</strong> (e.g. <code>24.4267</code>)
                 <br />• Second number is <strong>Longitude</strong> (e.g. <code>54.6511</code>)
               </li>
-              <li>Set separate radiuses in meters (e.g. <strong>500m</strong> for Attendance Log In and <strong>1000m / 1km</strong> for Daily Sign Out).</li>
+              <li>Set separate radiuses in meters (e.g. <strong>50m</strong> for Attendance Log In and <strong>500m</strong> for Daily Sign Out).</li>
             </ol>
           </div>
         )}
@@ -276,28 +464,28 @@ export const AuditBackupTab: React.FC = () => {
               <label className="form-label">Attendance Log In Radius (Meters)</label>
               <input
                 type="number"
-                min="10"
+                min="1"
                 max="50000"
                 className="form-control"
                 value={geofence.loginRadiusMeters}
-                onChange={(e) => setGeofence({ ...geofence, loginRadiusMeters: parseInt(e.target.value) || 500 })}
+                onChange={(e) => setGeofence({ ...geofence, loginRadiusMeters: parseInt(e.target.value) || 50 })}
                 required
               />
-              <span style={{ fontSize: '0.75rem', color: '#64748B' }}>e.g. 500 = 0.5 km radius</span>
+              <span style={{ fontSize: '0.75rem', color: '#64748B' }}>e.g. 50 = 50 meters radius</span>
             </div>
 
             <div className="form-group">
               <label className="form-label">Daily Sign Out Radius (Meters)</label>
               <input
                 type="number"
-                min="10"
+                min="1"
                 max="50000"
                 className="form-control"
                 value={geofence.signOutRadiusMeters}
-                onChange={(e) => setGeofence({ ...geofence, signOutRadiusMeters: parseInt(e.target.value) || 1000 })}
+                onChange={(e) => setGeofence({ ...geofence, signOutRadiusMeters: parseInt(e.target.value) || 500 })}
                 required
               />
-              <span style={{ fontSize: '0.75rem', color: '#64748B' }}>e.g. 1000 = 1.0 km radius</span>
+              <span style={{ fontSize: '0.75rem', color: '#64748B' }}>e.g. 500 = 500 meters radius</span>
             </div>
           </div>
 
@@ -310,7 +498,7 @@ export const AuditBackupTab: React.FC = () => {
         </form>
       </div>
 
-      {/* Matrix Excel Generator Section */}
+      {/* SECTION 3: Matrix Excel Generator Section */}
       <div className="card" style={{ borderLeft: '5px solid #C5A059', marginBottom: '1.5rem' }}>
         <div className="card-header">
           <span className="card-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>

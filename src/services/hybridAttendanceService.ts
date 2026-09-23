@@ -117,6 +117,8 @@ export class HybridAttendanceService implements IAttendanceService {
     const signOutMap = new Map<string, string>();
     (signOutRecords || []).forEach((s: any) => signOutMap.set(s.trainee_id, s.sign_out_time));
 
+    const past8AM = isPastCutoffTime(targetDate);
+
     const logs: TraineeLogSummary[] = [];
 
     for (let i = 0; i < allTrainees.length; i++) {
@@ -130,6 +132,12 @@ export class HybridAttendanceService implements IAttendanceService {
       if (att) {
         status = att.status as AttendanceStatus;
         loginTime = att.login_time;
+      } else {
+        if (!past8AM) {
+          status = 'N/A'; // Pending 08:00 AM cutoff
+        } else {
+          status = 'No Show'; // After 08:00 AM cutoff
+        }
       }
 
       const allocations = (allAllocations || []).filter((al: any) => al.trainee_id === trainee.trainee_id);

@@ -98,5 +98,16 @@ export const Badge: React.FC<BadgeProps> = ({ status }) => {
     );
   }
 
+  if (status === 'N/A') {
+    return (
+      <span className="badge badge-na">
+        <Clock size={13} />
+        <span>N/A (Pending 08:00 AM)</span>
+      </span>
+    );
+  }
+
+  return <span className="badge badge-info">{status}</span>;
+
   return <span className="badge badge-info">{status}</span>;
 };

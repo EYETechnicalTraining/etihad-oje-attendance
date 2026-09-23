@@ -100,9 +100,9 @@ export class DexieAttendanceService implements IAttendanceService {
         loginTime = att.loginTime;
       } else {
         if (!past8AM) {
-          status = 'No Show'; // Standard unlogged status pending 8 AM cutoff, rendered with clear context
+          status = 'N/A'; // Pending 08:00 AM cutoff
         } else {
-          status = 'No Show'; // After 8 AM cutoff
+          status = 'No Show'; // After 08:00 AM cutoff
         }
       }
 

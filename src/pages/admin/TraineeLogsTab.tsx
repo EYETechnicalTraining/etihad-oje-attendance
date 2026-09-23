@@ -3,6 +3,7 @@ import { TraineeLogSummary, Allocation, TaskCount, User, AttendanceStatus } from
 import { attendanceService } from '../../services/hybridAttendanceService';
 import { allocationService } from '../../services/hybridAllocationService';
 import { taskService } from '../../services/hybridTaskService';
+import { emailService } from '../../services/emailService';
 import {
   getUAEDateString,
   formatDisplayDate,
@@ -49,6 +50,11 @@ export const TraineeLogsTab: React.FC = () => {
       initialEdits[l.traineeId] = l.status;
     });
     setStatusEdits(initialEdits);
+
+    // Trigger automated No Show email dispatch if past 08:00 AM
+    if (dateStr === getUAEDateString()) {
+      emailService.triggerAutomatedNoShowEmails(dateStr, data);
+    }
   };
 
   useEffect(() => {

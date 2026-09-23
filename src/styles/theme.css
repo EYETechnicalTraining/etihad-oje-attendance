@@ -380,6 +380,12 @@ body {
   border-color: #FFEDD5;
 }
 
+.badge-na {
+  background-color: #F8FAFC;
+  color: #64748B;
+  border-color: #CBD5E1;
+}
+
 /* Trainee Mobile Cards Grid */
 .trainee-grid {
   display: grid;
