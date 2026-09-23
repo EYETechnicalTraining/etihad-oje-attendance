@@ -46,7 +46,9 @@ export const TraineeLogsTab: React.FC = () => {
     { open: false, log: null }
   );
 
-  const loadLogs = async (dateStr: string) => {
+  const hasTriggeredDailyAutoNoShow = React.useRef(false);
+
+  const loadLogs = async (dateStr: string, isDailyAutoTrigger = false) => {
     const data = await attendanceService.getTraineeLogsForDate(dateStr);
     setLogs(data);
     // Initialize statusEdits with current statuses
@@ -61,14 +63,19 @@ export const TraineeLogsTab: React.FC = () => {
     const matchedHoliday = holidays.find((h) => h.date === dateStr);
     setHolidayName(matchedHoliday ? matchedHoliday.name : null);
 
-    // Trigger automated No Show email dispatch if past 08:00 AM
-    if (dateStr === getUAEDateString()) {
+    // ONLY trigger automated No Show email dispatch on initial daily load, NEVER on manual saves!
+    if (isDailyAutoTrigger && dateStr === getUAEDateString()) {
       emailService.triggerAutomatedNoShowEmails(dateStr, data);
     }
   };
 
   useEffect(() => {
-    loadLogs(selectedDate);
+    const isToday = selectedDate === getUAEDateString();
+    const shouldRunDailyAuto = isToday && !hasTriggeredDailyAutoNoShow.current;
+    if (shouldRunDailyAuto) {
+      hasTriggeredDailyAutoNoShow.current = true;
+    }
+    loadLogs(selectedDate, shouldRunDailyAuto);
   }, [selectedDate]);
 
   const handlePrevDay = () => {
@@ -89,7 +96,7 @@ export const TraineeLogsTab: React.FC = () => {
     setNotification(null);
     await attendanceService.updateTraineeAttendanceStatus(traineeId, selectedDate, targetStatus);
 
-    // If status changed to Late to Work or No Show, dispatch notification email
+    // If status changed to Late to Work or No Show, dispatch notification email ONLY to this one trainee
     const targetTrainee = logs.find((l) => l.traineeId === traineeId);
     if (targetTrainee && targetTrainee.username) {
       if (targetStatus === 'Late to Work') {
@@ -106,7 +113,7 @@ export const TraineeLogsTab: React.FC = () => {
         if (res.success) {
           setNotification({
             type: 'success',
-            text: `Status for ${targetTrainee.name} updated to "Late to Work". Email notification dispatched to ${targetTrainee.username}!`,
+            text: `Status for ${targetTrainee.name} updated to "Late to Work". Email notification dispatched ONLY to ${targetTrainee.username}!`,
           });
         } else {
           setNotification({
@@ -126,7 +133,7 @@ export const TraineeLogsTab: React.FC = () => {
         if (res.success) {
           setNotification({
             type: 'success',
-            text: `Status for ${targetTrainee.name} updated to "No Show". Email notification dispatched to ${targetTrainee.username}!`,
+            text: `Status for ${targetTrainee.name} updated to "No Show". Email notification dispatched ONLY to ${targetTrainee.username}!`,
           });
         } else {
           setNotification({
@@ -142,7 +149,8 @@ export const TraineeLogsTab: React.FC = () => {
       }
     }
 
-    await loadLogs(selectedDate);
+    // Refresh logs table WITHOUT triggering any automated batch emails!
+    await loadLogs(selectedDate, false);
     setSavingId(null);
   };
 

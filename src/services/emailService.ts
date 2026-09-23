@@ -448,6 +448,8 @@ export class EmailService {
     return this.sendNoShowEmail(toName, toEmail, dateStr, undefined, settings);
   }
 
+  private isTriggeringNoShow = false;
+
   /**
    * Automated check triggered after 08:00 AM.
    * Dispatches No-Show emails to all unlogged trainees.
@@ -456,6 +458,8 @@ export class EmailService {
     targetDate: string,
     logs: TraineeLogSummary[]
   ): Promise<{ dispatchedCount: number; errors: string[] }> {
+    if (this.isTriggeringNoShow) return { dispatchedCount: 0, errors: [] };
+
     const settings = await this.getEmailSettings();
     const errors: string[] = [];
     let count = 0;
@@ -468,20 +472,25 @@ export class EmailService {
     if (!isPastCutoffTime(targetDate)) return { dispatchedCount: 0, errors: [] };
     if (settings.lastNoShowNotificationDate === targetDate) return { dispatchedCount: 0, errors: [] };
 
-    const noShowTrainees = logs.filter((l) => l.status === 'No Show' && l.username);
+    this.isTriggeringNoShow = true;
 
-    for (const trainee of noShowTrainees) {
-      const res = await this.sendNoShowEmail(trainee.name, trainee.username, targetDate, trainee.traineeId, settings);
-      if (res.success) {
-        count++;
-      } else if (res.error && !res.error.includes('blocked')) {
-        errors.push(`${trainee.name} (${trainee.username}): ${res.error}`);
-      }
-    }
-
-    if (count > 0 || noShowTrainees.length > 0) {
+    try {
+      // Mark as processed immediately so subsequent calls or page reloads don't re-dispatch
       settings.lastNoShowNotificationDate = targetDate;
       await this.saveEmailSettings(settings);
+
+      const noShowTrainees = logs.filter((l) => l.status === 'No Show' && l.username);
+
+      for (const trainee of noShowTrainees) {
+        const res = await this.sendNoShowEmail(trainee.name, trainee.username, targetDate, trainee.traineeId, settings);
+        if (res.success) {
+          count++;
+        } else if (res.error && !res.error.includes('blocked')) {
+          errors.push(`${trainee.name} (${trainee.username}): ${res.error}`);
+        }
+      }
+    } finally {
+      this.isTriggeringNoShow = false;
     }
 
     return { dispatchedCount: count, errors };
