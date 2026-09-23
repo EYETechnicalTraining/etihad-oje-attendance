@@ -29,6 +29,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ currentUser }) =
 
   const [refreshKey, setRefreshKey] = useState<number>(0);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [countdown, setCountdown] = useState<number>(5);
+  const [isAutoRefreshing, setIsAutoRefreshing] = useState(false);
 
   const setActiveTab = (tab: AdminTabKey) => {
     setActiveTabState(tab);
@@ -49,18 +51,27 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ currentUser }) =
     return () => window.removeEventListener('hashchange', handleHashChange);
   }, []);
 
-  // Auto-refresh trigger every 5 seconds (5,000 ms) without page reload
+  // Auto-refresh countdown timer: 5... 4... 3... 2... 1... Refresh
   useEffect(() => {
-    const interval = setInterval(() => {
-      setRefreshKey((prev) => prev + 1);
-    }, 5000);
+    const timer = setInterval(() => {
+      setCountdown((prev) => {
+        if (prev <= 1) {
+          setIsAutoRefreshing(true);
+          setRefreshKey((k) => k + 1);
+          setTimeout(() => setIsAutoRefreshing(false), 900);
+          return 5;
+        }
+        return prev - 1;
+      });
+    }, 1000);
 
-    return () => clearInterval(interval);
+    return () => clearInterval(timer);
   }, []);
 
   const handleManualRefresh = () => {
     setIsRefreshing(true);
     setRefreshKey((prev) => prev + 1);
+    setCountdown(5);
     setTimeout(() => setIsRefreshing(false), 400);
   };
 
@@ -115,19 +126,35 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ currentUser }) =
           <span
             style={{
               fontSize: '0.75rem',
-              color: '#64748B',
+              color: isAutoRefreshing ? '#065F46' : '#475569',
               display: 'flex',
               alignItems: 'center',
               gap: '0.35rem',
-              background: '#F1F5F9',
-              padding: '0.3rem 0.6rem',
+              background: isAutoRefreshing ? '#D1FAE5' : '#F1F5F9',
+              padding: '0.3rem 0.65rem',
               borderRadius: '20px',
-              border: '1px solid #E2E8F0',
+              border: isAutoRefreshing ? '1px solid #10B981' : '1px solid #E2E8F0',
+              fontWeight: 600,
+              minWidth: '145px',
+              justifyContent: 'center',
+              transition: 'all 0.2s ease',
             }}
-            title="Data automatically refreshes every 5 seconds seamlessly without page reload"
+            title="Auto-refresh countdown in seconds (5... 4... 3... 2... 1... Refresh)"
           >
-            <span style={{ width: '7px', height: '7px', borderRadius: '50%', backgroundColor: '#10B981', display: 'inline-block' }}></span>
-            <span>Auto-refresh: 5s</span>
+            <span
+              style={{
+                width: '7px',
+                height: '7px',
+                borderRadius: '50%',
+                backgroundColor: isAutoRefreshing ? '#059669' : '#10B981',
+                display: 'inline-block',
+                transform: isAutoRefreshing ? 'scale(1.3)' : 'scale(1)',
+                transition: 'transform 0.2s ease',
+              }}
+            ></span>
+            <span>
+              {isAutoRefreshing ? 'Refreshing...' : `Auto-refresh: ${countdown}...`}
+            </span>
           </span>
 
           <button
@@ -137,7 +164,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ currentUser }) =
             title="Refresh current tab data immediately"
             disabled={isRefreshing}
           >
-            <RefreshCw size={13} style={{ animation: isRefreshing ? 'spin 0.6s linear infinite' : 'none' }} />
+            <RefreshCw size={13} style={{ animation: (isRefreshing || isAutoRefreshing) ? 'spin 0.6s linear infinite' : 'none' }} />
             <span>{isRefreshing ? 'Refreshing...' : 'Refresh'}</span>
           </button>
         </div>
