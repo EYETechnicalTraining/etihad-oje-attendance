@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { User } from './types';
 import { initializeDatabase } from './db';
 import { Header } from './components/common/Header';
+import { Footer } from './components/common/Footer';
 import { Login } from './pages/Login';
 import { AdminDashboard } from './pages/admin/AdminDashboard';
 import { TraineeDashboard } from './pages/trainee/TraineeDashboard';
@@ -70,6 +71,8 @@ export const App: React.FC = () => {
       ) : (
         <TraineeDashboard currentUser={currentUser} />
       )}
+
+      {currentUser && <Footer />}
     </div>
   );
 };

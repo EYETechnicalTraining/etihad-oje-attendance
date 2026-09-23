@@ -130,6 +130,20 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
           Authorized Personnel Only • Etihad Engineering Technical Training Division
         </div>
       </div>
+
+      <div
+        style={{
+          marginTop: '1.5rem',
+          textAlign: 'center',
+          fontSize: '0.82rem',
+          color: '#94A3B8',
+          letterSpacing: '0.2px',
+        }}
+      >
+        <span>Developed By <strong style={{ color: '#C5A059' }}>Shlok Raskar</strong></span>
+        <span style={{ margin: '0 0.5rem', color: '#64748B' }}>|</span>
+        <span>Copyrights <strong style={{ color: '#C5A059' }}>Shlok Raskar</strong> 2026</span>
+      </div>
     </div>
   );
 };

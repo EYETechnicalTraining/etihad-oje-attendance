@@ -261,7 +261,7 @@ export const TraineeDashboard: React.FC<TraineeDashboardProps> = ({ currentUser 
   };
 
   return (
-    <div className="main-content" style={{ maxWidth: '800px' }}>
+    <div className="main-content" style={{ maxWidth: '800px', paddingBottom: '2.5rem' }}>
       {notification && <Notification type={notification.type} message={notification.text} onClose={() => setNotification(null)} />}
 
       {/* Trainee Welcome Banner Header */}
