@@ -1,6 +1,7 @@
 import { traineeService as dexieTrainee } from './dexie/traineeService';
 import { supabase, isSupabaseConfigured } from './supabase/client';
 import { Trainee, Batch, Remark } from '../types';
+import { db } from '../db';
 import { hashPassword } from '../utils/security';
 import { getUAEDateString, getUAETimeString } from '../utils/timezone';
 import { ITraineeService } from './api';
@@ -167,25 +168,57 @@ export class HybridTraineeService implements ITraineeService {
   async getRemarks(traineeId: string): Promise<Remark[]> {
     if (!isSupabaseConfigured || !supabase) return await dexieTrainee.getRemarks(traineeId);
 
-    const { data } = await supabase.from('remarks').select('*').eq('trainee_id', traineeId).order('timestamp', { ascending: false });
-    if (!data || data.length === 0) return await dexieTrainee.getRemarks(traineeId);
-    return data.map((r: any) => ({
-      id: r.id,
-      traineeId: r.trainee_id,
-      remark: r.remark,
-      createdBy: r.created_by,
-      date: r.date,
-      time: r.time,
-      timestamp: Number(r.timestamp),
-    }));
+    try {
+      const { data, error } = await supabase
+        .from('remarks')
+        .select('*')
+        .eq('trainee_id', traineeId)
+        .order('timestamp', { ascending: false });
+
+      if (error || !data) {
+        console.warn('Supabase getRemarks query error, falling back to local storage:', error?.message);
+        return await dexieTrainee.getRemarks(traineeId);
+      }
+
+      // Sync Dexie with fresh Supabase remarks for this trainee so deleted remarks are purged
+      try {
+        await db.remarks.where('traineeId').equals(traineeId).delete();
+        if (data.length > 0) {
+          const records: Remark[] = data.map((r: any) => ({
+            id: r.id,
+            traineeId: r.trainee_id,
+            remark: r.remark,
+            createdBy: r.created_by,
+            date: r.date,
+            time: r.time,
+            timestamp: Number(r.timestamp),
+          }));
+          await db.remarks.bulkPut(records);
+        }
+      } catch {
+        // ignore local cache sync issues
+      }
+
+      return data.map((r: any) => ({
+        id: r.id,
+        traineeId: r.trainee_id,
+        remark: r.remark,
+        createdBy: r.created_by,
+        date: r.date,
+        time: r.time,
+        timestamp: Number(r.timestamp),
+      }));
+    } catch (err: any) {
+      console.warn('Failed to fetch remarks from Supabase, using local database:', err);
+      return await dexieTrainee.getRemarks(traineeId);
+    }
   }
 
   async addRemark(traineeId: string, remarkText: string, author: string): Promise<{ success: boolean; remark?: Remark; error?: string }> {
     const cleanRemark = remarkText.trim();
-    // Sync Dexie locally
-    const dexieRes = await dexieTrainee.addRemark(traineeId, cleanRemark, author);
+    if (!cleanRemark) return { success: false, error: 'Remark cannot be empty' };
 
-    if (!isSupabaseConfigured || !supabase) return dexieRes;
+    if (!isSupabaseConfigured || !supabase) return await dexieTrainee.addRemark(traineeId, cleanRemark, author);
 
     try {
       const date = getUAEDateString();
@@ -201,42 +234,64 @@ export class HybridTraineeService implements ITraineeService {
         timestamp,
       }]).select();
 
-      if (error || !data) {
-        // Return local dexie remark if Supabase failed or errored
-        return dexieRes.success ? dexieRes : { success: false, error: error?.message || 'Failed to save remark.' };
+      if (error || !data || data.length === 0) {
+        return { success: false, error: error?.message || 'Failed to save remark.' };
+      }
+
+      const newRemark: Remark = {
+        id: data[0].id,
+        traineeId,
+        remark: cleanRemark,
+        createdBy: author,
+        date,
+        time,
+        timestamp,
+      };
+
+      // Mirror into Dexie with the exact same ID
+      try {
+        await db.remarks.put(newRemark);
+      } catch {
+        // ignore
       }
 
       return {
         success: true,
-        remark: {
-          id: data[0].id,
-          traineeId,
-          remark: cleanRemark,
-          createdBy: author,
-          date,
-          time,
-          timestamp,
-        },
+        remark: newRemark,
       };
     } catch (err: any) {
-      return dexieRes.success ? dexieRes : { success: false, error: err.message || 'Failed to save remark' };
+      return { success: false, error: err.message || 'Failed to save remark' };
     }
   }
 
   async deleteRemark(remarkId: number): Promise<{ success: boolean; error?: string }> {
-    // Delete in Dexie
-    await dexieTrainee.deleteRemark(remarkId);
+    let success = true;
+    let errorMsg = '';
 
-    // Delete in Supabase if configured
+    // 1. Delete in Supabase if configured
     if (isSupabaseConfigured && supabase) {
       try {
-        await supabase.from('remarks').delete().eq('id', remarkId);
+        const { error } = await supabase.from('remarks').delete().eq('id', remarkId);
+        if (error) {
+          console.error('Failed to delete remark from Supabase:', error);
+          success = false;
+          errorMsg = error.message;
+        }
       } catch (err: any) {
-        console.warn('Failed to delete remark from Supabase:', err);
+        console.error('Failed to delete remark from Supabase:', err);
+        success = false;
+        errorMsg = err.message;
       }
     }
 
-    return { success: true };
+    // 2. Delete in Dexie
+    try {
+      await db.remarks.delete(remarkId);
+    } catch (err) {
+      console.warn('Failed to delete remark from Dexie:', err);
+    }
+
+    return { success, error: errorMsg };
   }
 
   async saveEnrollmentSelfie(traineeId: string, selfieBase64: string): Promise<{ success: boolean; error?: string }> {

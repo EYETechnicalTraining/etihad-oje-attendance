@@ -21,6 +21,7 @@ export const TraineeProfileModal: React.FC<TraineeProfileModalProps> = ({
   const [remarks, setRemarks] = useState<Remark[]>([]);
   const [newRemark, setNewRemark] = useState('');
   const [loading, setLoading] = useState(false);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
   const [msg, setMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   const loadRemarks = async () => {
@@ -39,7 +40,7 @@ export const TraineeProfileModal: React.FC<TraineeProfileModalProps> = ({
 
   const handleSaveRemark = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!trainee || !newRemark.trim()) return;
+    if (!trainee || !newRemark.trim() || loading) return;
 
     const remarkText = newRemark.trim();
     setLoading(true);
@@ -57,25 +58,29 @@ export const TraineeProfileModal: React.FC<TraineeProfileModalProps> = ({
       // Optimistic update: instantly show new remark
       setRemarks((prev) => [res.remark!, ...prev.filter((r) => r.id !== res.remark!.id)]);
       setMsg({ type: 'success', text: 'Remark saved successfully.' });
-      await loadRemarks();
+      const fresh = await traineeService.getRemarks(trainee.traineeId);
+      setRemarks(fresh);
     } else {
       setMsg({ type: 'error', text: res.error || 'Failed to save remark.' });
     }
   };
 
   const handleDeleteRemark = async (remarkId: number) => {
+    if (!trainee) return;
     if (!confirm('Are you sure you want to delete this remark? This action cannot be undone.')) return;
-    setLoading(true);
+    setDeletingId(remarkId);
     setMsg(null);
 
-    // Optimistic update: instantly remove deleted remark
+    // 1. Optimistic update: instantly remove deleted remark on 1 click
     setRemarks((prev) => prev.filter((r) => r.id !== remarkId));
 
+    // 2. Delete from database
     const res = await traineeService.deleteRemark(remarkId);
-    setLoading(false);
+    setDeletingId(null);
     if (res.success) {
       setMsg({ type: 'success', text: 'Remark deleted successfully.' });
-      await loadRemarks();
+      const fresh = await traineeService.getRemarks(trainee.traineeId);
+      setRemarks(fresh);
     } else {
       setMsg({ type: 'error', text: res.error || 'Failed to delete remark.' });
       await loadRemarks();
@@ -166,12 +171,13 @@ export const TraineeProfileModal: React.FC<TraineeProfileModalProps> = ({
                     <button
                       type="button"
                       onClick={() => r.id && handleDeleteRemark(r.id)}
+                      disabled={deletingId === r.id}
                       className="btn btn-outline btn-sm"
                       style={{ padding: '0.15rem 0.45rem', fontSize: '0.7rem', color: '#B91C1C', borderColor: '#FCA5A5' }}
                       title="Delete Remark"
                     >
                       <Trash2 size={11} />
-                      <span>Delete</span>
+                      <span>{deletingId === r.id ? 'Deleting...' : 'Delete'}</span>
                     </button>
                   )}
                 </div>
