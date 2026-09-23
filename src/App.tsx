@@ -65,7 +65,7 @@ export const App: React.FC = () => {
 
       {!currentUser ? (
         <Login onLoginSuccess={handleLoginSuccess} />
-      ) : currentUser.role === 'MASTER' ? (
+      ) : currentUser.role === 'MASTER' || currentUser.role === 'INSTRUCTOR' ? (
         <AdminDashboard currentUser={currentUser} />
       ) : (
         <TraineeDashboard currentUser={currentUser} />

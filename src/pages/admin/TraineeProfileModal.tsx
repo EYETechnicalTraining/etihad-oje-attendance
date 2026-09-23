@@ -3,7 +3,7 @@ import { Trainee, Remark, User } from '../../types';
 import { traineeService } from '../../services/hybridTraineeService';
 import { Modal } from '../../components/common/Modal';
 import { Notification } from '../../components/common/Notification';
-import { MessageSquare, Calendar, Clock, UserCheck, PlusCircle } from 'lucide-react';
+import { MessageSquare, Calendar, Clock, UserCheck, PlusCircle, Trash2 } from 'lucide-react';
 
 interface TraineeProfileModalProps {
   isOpen: boolean;
@@ -57,6 +57,20 @@ export const TraineeProfileModal: React.FC<TraineeProfileModalProps> = ({
       loadRemarks();
     } else {
       setMsg({ type: 'error', text: res.error || 'Failed to save remark.' });
+    }
+  };
+
+  const handleDeleteRemark = async (remarkId: number) => {
+    if (!confirm('Are you sure you want to delete this remark? This action cannot be undone.')) return;
+    setLoading(true);
+    setMsg(null);
+    const res = await traineeService.deleteRemark(remarkId);
+    setLoading(false);
+    if (res.success) {
+      setMsg({ type: 'success', text: 'Remark deleted successfully.' });
+      loadRemarks();
+    } else {
+      setMsg({ type: 'error', text: res.error || 'Failed to delete remark.' });
     }
   };
 
@@ -137,13 +151,21 @@ export const TraineeProfileModal: React.FC<TraineeProfileModalProps> = ({
                   {r.remark}
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.75rem', color: '#64748B' }}>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                    <UserCheck size={12} color="#C5A059" /> By: {r.createdBy}
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                    <Calendar size={13} color="#C5A059" /> <span>Date: {r.date}</span>
                   </span>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <span><Calendar size={12} /> {r.date}</span>
-                    <span><Clock size={12} /> {r.time}</span>
-                  </span>
+                  {currentUser.role === 'MASTER' && (
+                    <button
+                      type="button"
+                      onClick={() => r.id && handleDeleteRemark(r.id)}
+                      className="btn btn-outline btn-sm"
+                      style={{ padding: '0.15rem 0.45rem', fontSize: '0.7rem', color: '#B91C1C', borderColor: '#FCA5A5' }}
+                      title="Delete Remark"
+                    >
+                      <Trash2 size={11} />
+                      <span>Delete</span>
+                    </button>
+                  )}
                 </div>
               </div>
             ))

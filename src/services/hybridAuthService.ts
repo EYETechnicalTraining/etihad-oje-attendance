@@ -1,6 +1,6 @@
 import { authService as dexieAuth } from './dexie/authService';
 import { supabase, isSupabaseConfigured } from './supabase/client';
-import { User } from '../types';
+import { User, Instructor } from '../types';
 import { hashPassword, verifyPassword } from '../utils/security';
 import { getUAEDateString, getUAETimeString } from '../utils/timezone';
 import { IAuthService } from './api';
@@ -61,12 +61,25 @@ export class HybridAuthService implements IAuthService {
       const nowString = getUAEDateString();
       await supabase.from('users').update({ last_login: nowString }).eq('id', user.id);
 
+      let resolvedRole = user.role;
+      let staffNumber = user.trainee_id || '';
+      let instructorName = '';
+
+      if (user.role === 'INSTRUCTOR' || (user.trainee_id && user.trainee_id.startsWith('INSTRUCTOR:'))) {
+        resolvedRole = 'INSTRUCTOR';
+        const parts = (user.trainee_id || '').replace('INSTRUCTOR:', '').split('|');
+        staffNumber = parts[0] || '';
+        instructorName = parts[1] || user.username;
+      }
+
       const appUser: User = {
         id: user.id,
         username: user.username,
         passwordHash: user.password_hash,
-        role: user.role,
+        role: resolvedRole,
         traineeId: user.trainee_id,
+        staffNumber: staffNumber || user.trainee_id,
+        name: instructorName || undefined,
         active: user.active,
         forcePasswordChange: user.force_password_change,
         lastLogin: nowString,
@@ -150,6 +163,150 @@ export class HybridAuthService implements IAuthService {
     } catch (err: any) {
       return { success: false, error: err.message || 'Failed to update user status' };
     }
+  }
+
+  async getInstructors(): Promise<Instructor[]> {
+    if (!isSupabaseConfigured || !supabase) {
+      return await dexieAuth.getInstructors();
+    }
+
+    try {
+      const { data: users, error } = await supabase.from('users').select('*');
+
+      if (error || !users) {
+        return await dexieAuth.getInstructors();
+      }
+
+      const instructors = users
+        .filter((u: any) => u.role === 'INSTRUCTOR' || (u.trainee_id && u.trainee_id.startsWith('INSTRUCTOR:')))
+        .map((u: any) => {
+          let staffNumber = u.trainee_id || '';
+          let name = '';
+          if (staffNumber.startsWith('INSTRUCTOR:')) {
+            const parts = staffNumber.replace('INSTRUCTOR:', '').split('|');
+            staffNumber = parts[0] || '';
+            name = parts[1] || u.username;
+          }
+          return {
+            id: u.id,
+            staffNumber: staffNumber || u.username,
+            name: name || u.username,
+            email: u.username,
+            active: u.active,
+            lastLogin: u.last_login,
+            lastPasswordChange: u.last_password_change,
+          };
+        });
+
+      return instructors;
+    } catch (err) {
+      return await dexieAuth.getInstructors();
+    }
+  }
+
+  async addInstructor(
+    staffNumber: string,
+    name: string,
+    email: string
+  ): Promise<{ success: boolean; instructor?: Instructor; error?: string }> {
+    // 1. Save locally to Dexie
+    const localRes = await dexieAuth.addInstructor(staffNumber, name, email);
+    if (!localRes.success) return localRes;
+
+    // 2. Sync to Supabase if configured
+    if (isSupabaseConfigured && supabase) {
+      try {
+        const cleanEmail = email.trim().toLowerCase();
+        const cleanStaff = staffNumber.trim();
+        const cleanName = name.trim();
+        const defaultPassword = `Etihad@${cleanStaff}`;
+        const passwordHash = await hashPassword(defaultPassword);
+        const now = getUAEDateString();
+
+        let insertData: any = {
+          username: cleanEmail,
+          password_hash: passwordHash,
+          role: 'INSTRUCTOR',
+          trainee_id: `INSTRUCTOR:${cleanStaff}|${cleanName}`,
+          active: true,
+          force_password_change: false,
+          last_login: null,
+          last_password_change: now,
+        };
+
+        const { error } = await supabase.from('users').insert([insertData]);
+
+        // If check constraint rejects 'INSTRUCTOR', fallback to 'MASTER' with encoded trainee_id
+        if (error && error.code === '23514') {
+          insertData.role = 'MASTER';
+          await supabase.from('users').insert([insertData]);
+        }
+      } catch (err: any) {
+        console.warn('Failed to sync new instructor to Supabase:', err);
+      }
+    }
+
+    return localRes;
+  }
+
+  async removeInstructor(username: string): Promise<{ success: boolean; error?: string }> {
+    await dexieAuth.removeInstructor(username);
+
+    if (isSupabaseConfigured && supabase) {
+      try {
+        await supabase.from('users').delete().ilike('username', username.trim().toLowerCase());
+      } catch (err: any) {
+        console.warn('Failed to delete instructor from Supabase:', err);
+      }
+    }
+
+    return { success: true };
+  }
+
+  async resetInstructorPassword(
+    username: string,
+    staffNumber: string
+  ): Promise<{ success: boolean; newPassword?: string; error?: string }> {
+    const localRes = await dexieAuth.resetInstructorPassword(username, staffNumber);
+    if (!localRes.success) return localRes;
+
+    if (isSupabaseConfigured && supabase) {
+      try {
+        const defaultPassword = `Etihad@${staffNumber.trim()}`;
+        const newHash = await hashPassword(defaultPassword);
+        const now = getUAEDateString();
+
+        await supabase
+          .from('users')
+          .update({
+            password_hash: newHash,
+            force_password_change: false,
+            last_password_change: now,
+          })
+          .ilike('username', username.trim().toLowerCase());
+      } catch (err: any) {
+        console.warn('Failed to reset instructor password in Supabase:', err);
+      }
+    }
+
+    return localRes;
+  }
+
+  async toggleInstructorStatus(username: string, active: boolean): Promise<{ success: boolean; error?: string }> {
+    await dexieAuth.toggleInstructorStatus(username, active);
+
+    if (isSupabaseConfigured && supabase) {
+      try {
+        await supabase
+          .from('users')
+          .update({ active })
+          .ilike('username', username.trim().toLowerCase());
+      } catch (err: any) {
+        console.warn('Failed to toggle instructor status in Supabase:', err);
+      }
+    }
+
+    return { success: true };
   }
 }
 

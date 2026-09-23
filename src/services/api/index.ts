@@ -11,6 +11,7 @@ import {
   AuditLog,
   TraineeLogSummary,
   AttendanceStatus,
+  Instructor,
 } from '../../types';
 
 export interface IAuthService {
@@ -18,6 +19,13 @@ export interface IAuthService {
   changePassword(username: string, currentPass: string, newPass: string): Promise<{ success: boolean; error?: string }>;
   resetTraineePassword(traineeId: string): Promise<{ success: boolean; newPassword?: string; error?: string }>;
   toggleUserStatus(traineeId: string, active: boolean): Promise<{ success: boolean; error?: string }>;
+  
+  // Instructor Access Control
+  getInstructors(): Promise<Instructor[]>;
+  addInstructor(staffNumber: string, name: string, email: string): Promise<{ success: boolean; instructor?: Instructor; error?: string }>;
+  removeInstructor(username: string): Promise<{ success: boolean; error?: string }>;
+  resetInstructorPassword(username: string, staffNumber: string): Promise<{ success: boolean; newPassword?: string; error?: string }>;
+  toggleInstructorStatus(username: string, active: boolean): Promise<{ success: boolean; error?: string }>;
 }
 
 export interface ITraineeService {
@@ -32,6 +40,7 @@ export interface ITraineeService {
 
   getRemarks(traineeId: string): Promise<Remark[]>;
   addRemark(traineeId: string, remarkText: string, author: string): Promise<{ success: boolean; remark?: Remark; error?: string }>;
+  deleteRemark(remarkId: number): Promise<{ success: boolean; error?: string }>;
   saveEnrollmentSelfie(traineeId: string, selfieBase64: string): Promise<{ success: boolean; error?: string }>;
 }
 

@@ -477,13 +477,15 @@ export const TraineeListTab: React.FC<TraineeListTabProps> = ({ currentUser }) =
                         <span>Profile</span>
                       </button>
 
-                      <button
-                        onClick={() => handleRemoveTrainee(t.traineeId, t.name)}
-                        className="btn btn-danger btn-sm"
-                        title="Remove Trainee"
-                      >
-                        <Trash2 size={13} />
-                      </button>
+                      {currentUser.role === 'MASTER' && (
+                        <button
+                          onClick={() => handleRemoveTrainee(t.traineeId, t.name)}
+                          className="btn btn-danger btn-sm"
+                          title="Remove Trainee"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -539,14 +541,16 @@ export const TraineeListTab: React.FC<TraineeListTabProps> = ({ currentUser }) =
                 }}
               >
                 <span style={{ fontWeight: 600 }}>{b.name}</span>
-                <button
-                  type="button"
-                  onClick={() => b.id && handleDeleteBatch(b.id, b.name)}
-                  className="btn btn-danger btn-sm"
-                  style={{ padding: '0.2rem 0.5rem' }}
-                >
-                  <Trash2 size={12} />
-                </button>
+                {currentUser.role === 'MASTER' && (
+                  <button
+                    type="button"
+                    onClick={() => b.id && handleDeleteBatch(b.id, b.name)}
+                    className="btn btn-danger btn-sm"
+                    style={{ padding: '0.2rem 0.5rem' }}
+                  >
+                    <Trash2 size={12} />
+                  </button>
+                )}
               </li>
             ))}
           </ul>

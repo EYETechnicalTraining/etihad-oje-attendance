@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { AuditLog, Batch, GeofenceSettings } from '../../types';
+import { AuditLog, Batch, GeofenceSettings, User } from '../../types';
 import { auditService } from '../../services/hybridAuditService';
 import { backupService } from '../../services/hybridBackupService';
 import { traineeService } from '../../services/hybridTraineeService';
@@ -26,7 +26,12 @@ import {
   RotateCcw,
 } from 'lucide-react';
 
-export const AuditBackupTab: React.FC = () => {
+interface AuditBackupTabProps {
+  currentUser?: User;
+}
+
+export const AuditBackupTab: React.FC<AuditBackupTabProps> = ({ currentUser }) => {
+  const isMaster = currentUser ? currentUser.role === 'MASTER' : true;
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [batches, setBatches] = useState<Batch[]>([]);
   const [notification, setNotification] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -314,16 +319,24 @@ export const AuditBackupTab: React.FC = () => {
   return (
     <div>
       <div style={{ marginBottom: '1.25rem' }}>
-        <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: '#0A192F' }}>Data Management, Geofence & Automated Outlook Email Dispatch</h2>
+        <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: '#0A192F' }}>
+          {isMaster
+            ? 'Data Management, Geofence & Automated Outlook Email Dispatch'
+            : 'Attendance Matrix Excel Report Generator'}
+        </h2>
         <p style={{ fontSize: '0.85rem', color: '#64748B' }}>
-          Configure automated 08:00 AM No-Show email notifications from your supervisor's Outlook email, set GPS Geofencing radii, and export custom matrix Excel reports.
+          {isMaster
+            ? "Configure automated 08:00 AM No-Show email notifications from your supervisor's Outlook email, set GPS Geofencing radii, and export custom matrix Excel reports."
+            : 'Generate and download comprehensive Matrix Excel reports for OJE Trainee Attendance across single dates or date ranges.'}
         </p>
       </div>
 
       {notification && <Notification type={notification.type} message={notification.text} onClose={() => setNotification(null)} />}
 
-      {/* SECTION 1: Automated No-Show & Late-to-Work Microsoft Power Automate Email Dispatch Settings Card */}
-      <div className="card" style={{ borderLeft: '5px solid #002060', marginBottom: '1.5rem' }}>
+      {isMaster && (
+        <>
+          {/* SECTION 1: Automated No-Show & Late-to-Work Microsoft Power Automate Email Dispatch Settings Card */}
+          <div className="card" style={{ borderLeft: '5px solid #002060', marginBottom: '1.5rem' }}>
         <div className="card-header">
           <span className="card-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <Mail size={20} color="#002060" />
@@ -574,6 +587,8 @@ export const AuditBackupTab: React.FC = () => {
           </div>
         </form>
       </div>
+    </>
+  )}
 
       {/* SECTION 3: Matrix Excel Generator Section */}
       <div className="card" style={{ borderLeft: '5px solid #C5A059', marginBottom: '1.5rem' }}>
@@ -654,7 +669,9 @@ export const AuditBackupTab: React.FC = () => {
         </form>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1.25rem', marginBottom: '1.5rem' }}>
+      {isMaster && (
+        <>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1.25rem', marginBottom: '1.5rem' }}>
         {/* JSON Backup Card */}
         <div className="card" style={{ marginBottom: 0 }}>
           <div className="card-header">
@@ -786,6 +803,8 @@ export const AuditBackupTab: React.FC = () => {
           </div>
         </form>
       </Modal>
+    </>
+  )}
     </div>
   );
 };

@@ -38,7 +38,11 @@ export const Header: React.FC<HeaderProps> = ({ user, onLogout, onRefresh }) => 
           <div className="user-badge-info">
             <div className="user-badge-name">{user.username}</div>
             <div className="user-badge-role">
-              {user.role === 'MASTER' ? 'Administrator' : `Trainee ID: ${user.traineeId}`}
+              {user.role === 'MASTER'
+                ? 'Administrator'
+                : user.role === 'INSTRUCTOR'
+                ? `OJE Instructor (${user.staffNumber || user.traineeId || 'Faculty'})`
+                : `Trainee ID: ${user.traineeId}`}
             </div>
           </div>
 

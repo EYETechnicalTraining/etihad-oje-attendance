@@ -202,6 +202,28 @@ export class DexieTraineeService implements ITraineeService {
     }
   }
 
+  async deleteRemark(remarkId: number): Promise<{ success: boolean; error?: string }> {
+    try {
+      const remark = await db.remarks.get(remarkId);
+      if (!remark) return { success: false, error: 'Remark not found' };
+
+      await db.remarks.delete(remarkId);
+
+      await db.auditLogs.add({
+        user: 'selva.master',
+        action: `Deleted Remark #${remarkId} for Trainee ${remark.traineeId}`,
+        date: getUAEDateString(),
+        time: getUAETimeString(),
+        relatedTrainee: remark.traineeId,
+        timestamp: Date.now(),
+      });
+
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Failed to delete remark' };
+    }
+  }
+
   async saveEnrollmentSelfie(traineeId: string, selfieBase64: string): Promise<{ success: boolean; error?: string }> {
     try {
       const trainee = await db.trainees.where('traineeId').equals(traineeId).first();

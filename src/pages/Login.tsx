@@ -74,7 +74,7 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
                 type="text"
                 className="form-control"
                 style={{ paddingLeft: '2.5rem' }}
-                placeholder="e.g. selva.master or trainee@etihad.ae"
+                placeholder="e.g. selva.master, instructor@etihad.ae, or trainee@etihad.ae"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 autoComplete="username"

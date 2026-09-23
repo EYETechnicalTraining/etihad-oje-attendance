@@ -63,9 +63,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ currentUser }) =
       {/* Tab Content */}
       <div style={{ marginTop: '1rem' }}>
         {activeTab === 'trainees' && <TraineeListTab currentUser={currentUser} />}
-        {activeTab === 'access' && <AccessControlTab />}
+        {activeTab === 'access' && <AccessControlTab currentUser={currentUser} />}
         {activeTab === 'logs' && <TraineeLogsTab />}
-        {activeTab === 'backup' && <AuditBackupTab />}
+        {activeTab === 'backup' && <AuditBackupTab currentUser={currentUser} />}
       </div>
     </div>
   );

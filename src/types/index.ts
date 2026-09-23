@@ -1,4 +1,4 @@
-export type UserRole = 'MASTER' | 'TRAINEE';
+export type UserRole = 'MASTER' | 'INSTRUCTOR' | 'TRAINEE';
 
 export type AttendanceStatus =
   | 'Present'
@@ -21,8 +21,20 @@ export interface User {
   passwordHash: string;
   role: UserRole;
   traineeId?: string;
+  staffNumber?: string;
+  name?: string;
   active: boolean;
   forcePasswordChange?: boolean;
+  lastLogin?: string | null;
+  lastPasswordChange?: string | null;
+}
+
+export interface Instructor {
+  id?: number;
+  staffNumber: string;
+  name: string;
+  email: string;
+  active: boolean;
   lastLogin?: string | null;
   lastPasswordChange?: string | null;
 }

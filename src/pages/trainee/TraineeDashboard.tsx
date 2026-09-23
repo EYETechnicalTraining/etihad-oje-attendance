@@ -318,7 +318,7 @@ export const TraineeDashboard: React.FC<TraineeDashboardProps> = ({ currentUser 
               "{remarks[0].remark}"
             </div>
             <div style={{ fontSize: '0.75rem', color: '#64748B', textAlign: 'right' }}>
-              By {remarks[0].createdBy} • {remarks[0].date} at {remarks[0].time}
+              Recorded on {remarks[0].date}
             </div>
           </div>
         )}
@@ -638,7 +638,7 @@ export const TraineeDashboard: React.FC<TraineeDashboardProps> = ({ currentUser 
                 "{r.remark}"
               </div>
               <div style={{ fontSize: '0.75rem', color: '#64748B', textAlign: 'right' }}>
-                By {r.createdBy} • {r.date} at {r.time}
+                Recorded on {r.date}
               </div>
             </div>
           ))}

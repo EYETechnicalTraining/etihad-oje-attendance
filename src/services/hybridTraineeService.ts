@@ -199,6 +199,22 @@ export class HybridTraineeService implements ITraineeService {
     }
   }
 
+  async deleteRemark(remarkId: number): Promise<{ success: boolean; error?: string }> {
+    // Delete in Dexie
+    await dexieTrainee.deleteRemark(remarkId);
+
+    // Delete in Supabase if configured
+    if (isSupabaseConfigured && supabase) {
+      try {
+        await supabase.from('remarks').delete().eq('id', remarkId);
+      } catch (err: any) {
+        console.warn('Failed to delete remark from Supabase:', err);
+      }
+    }
+
+    return { success: true };
+  }
+
   async saveEnrollmentSelfie(traineeId: string, selfieBase64: string): Promise<{ success: boolean; error?: string }> {
     if (!isSupabaseConfigured || !supabase) return await dexieTrainee.saveEnrollmentSelfie(traineeId, selfieBase64);
 
