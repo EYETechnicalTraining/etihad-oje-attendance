@@ -10,6 +10,7 @@ import {
   GraduationCap,
   PauseCircle,
   Coffee,
+  Calendar,
 } from 'lucide-react';
 
 interface BadgeProps {
@@ -98,6 +99,15 @@ export const Badge: React.FC<BadgeProps> = ({ status }) => {
     );
   }
 
+  if (status === 'Holiday') {
+    return (
+      <span className="badge badge-holiday">
+        <Calendar size={13} />
+        <span>HOLIDAY</span>
+      </span>
+    );
+  }
+
   if (status === 'N/A') {
     return (
       <span className="badge badge-na">
@@ -106,8 +116,6 @@ export const Badge: React.FC<BadgeProps> = ({ status }) => {
       </span>
     );
   }
-
-  return <span className="badge badge-info">{status}</span>;
 
   return <span className="badge badge-info">{status}</span>;
 };

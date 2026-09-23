@@ -4,6 +4,7 @@ import { attendanceService } from '../../services/hybridAttendanceService';
 import { allocationService } from '../../services/hybridAllocationService';
 import { taskService } from '../../services/hybridTaskService';
 import { emailService } from '../../services/emailService';
+import { holidayService } from '../../services/hybridHolidayService';
 import {
   getUAEDateString,
   formatDisplayDate,
@@ -22,6 +23,7 @@ import {
   UserCheck,
   Coffee,
   Save,
+  Sun,
 } from 'lucide-react';
 
 export const TraineeLogsTab: React.FC = () => {
@@ -29,6 +31,7 @@ export const TraineeLogsTab: React.FC = () => {
   const [logs, setLogs] = useState<TraineeLogSummary[]>([]);
   const [statusEdits, setStatusEdits] = useState<Record<string, AttendanceStatus>>({});
   const [savingId, setSavingId] = useState<string | null>(null);
+  const [holidayName, setHolidayName] = useState<string | null>(null);
 
   // Modals state
   const [allocationModal, setAllocationModal] = useState<{ open: boolean; traineeId: string; name: string } | null>(null);
@@ -50,6 +53,11 @@ export const TraineeLogsTab: React.FC = () => {
       initialEdits[l.traineeId] = l.status;
     });
     setStatusEdits(initialEdits);
+
+    // Check holiday
+    const holidays = await holidayService.getAllHolidays();
+    const matchedHoliday = holidays.find((h) => h.date === dateStr);
+    setHolidayName(matchedHoliday ? matchedHoliday.name : null);
 
     // Trigger automated No Show email dispatch if past 08:00 AM
     if (dateStr === getUAEDateString()) {
@@ -150,7 +158,31 @@ export const TraineeLogsTab: React.FC = () => {
           }}
         >
           <Coffee size={18} color="#2563EB" />
-          <span>WEEKEND (No logs on weekend)</span>
+          <span>WEEKEND (No attendance logs or automated emails on weekends)</span>
+        </div>
+      )}
+
+      {/* Holiday Banner */}
+      {holidayName && (
+        <div
+          style={{
+            background: '#FDF4FF',
+            border: '1px solid #F5D0FE',
+            color: '#9333EA',
+            padding: '0.75rem 1rem',
+            borderRadius: '8px',
+            marginBottom: '1rem',
+            textAlign: 'center',
+            fontWeight: 700,
+            fontSize: '0.9rem',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '0.5rem',
+          }}
+        >
+          <Sun size={18} color="#9333EA" />
+          <span>PUBLIC / COMPANY HOLIDAY: {holidayName.toUpperCase()} (Automated No-Show emails paused)</span>
         </div>
       )}
 

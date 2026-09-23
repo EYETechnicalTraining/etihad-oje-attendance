@@ -10,6 +10,7 @@ export type AttendanceStatus =
   | 'Training'
   | 'Stand Down'
   | 'Weekend'
+  | 'Holiday'
   | 'N/A';
 
 export type InsideOutside = 'Inside' | 'Outside';
@@ -41,6 +42,13 @@ export interface Trainee {
 export interface Batch {
   id?: number;
   name: string;
+  createdAt: string;
+}
+
+export interface Holiday {
+  id?: number;
+  date: string; // YYYY-MM-DD
+  name: string; // e.g. "UAE National Day"
   createdAt: string;
 }
 

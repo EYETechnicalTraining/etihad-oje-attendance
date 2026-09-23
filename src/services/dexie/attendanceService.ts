@@ -5,8 +5,10 @@ import {
   getUAETimeString,
   calculateAttendanceStatus,
   isPastCutoffTime,
+  isWeekend,
 } from '../../utils/timezone';
 import { IAttendanceService } from '../api';
+import { holidayService } from '../hybridHolidayService';
 
 export class DexieAttendanceService implements IAttendanceService {
   async getDailyAttendance(date: string): Promise<Attendance[]> {
@@ -84,6 +86,9 @@ export class DexieAttendanceService implements IAttendanceService {
     signOutRecords.forEach((s) => signOutMap.set(s.traineeId, s.signOutTime));
 
     const past8AM = isPastCutoffTime(targetDate);
+    const holidays = await holidayService.getAllHolidays();
+    const isHolidayDate = holidays.some((h) => h.date === targetDate);
+    const isWeekendDay = isWeekend(targetDate);
 
     const logs: TraineeLogSummary[] = [];
 
@@ -98,6 +103,10 @@ export class DexieAttendanceService implements IAttendanceService {
       if (att) {
         status = att.status;
         loginTime = att.loginTime;
+      } else if (isWeekendDay) {
+        status = 'Weekend';
+      } else if (isHolidayDate) {
+        status = 'Holiday';
       } else {
         if (!past8AM) {
           status = 'N/A'; // Pending 08:00 AM cutoff

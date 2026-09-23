@@ -11,6 +11,7 @@ import {
   PasskeyCredential,
   AuditLog,
   Setting,
+  Holiday,
 } from '../types';
 import { hashPassword } from '../utils/security';
 import { getUAEDateString, getUAETimeString } from '../utils/timezone';
@@ -27,6 +28,7 @@ export class EtihadDatabase extends Dexie {
   passkeyCredentials!: Table<PasskeyCredential, number>;
   auditLogs!: Table<AuditLog, number>;
   settings!: Table<Setting, number>;
+  holidays!: Table<Holiday, number>;
 
   constructor() {
     super('EtihadOJEDatabase');
@@ -42,6 +44,7 @@ export class EtihadDatabase extends Dexie {
       passkeyCredentials: '++id, traineeId, credentialId',
       auditLogs: '++id, date, timestamp, user, relatedTrainee',
       settings: '++id, &key',
+      holidays: '++id, &date, name',
     });
   }
 }

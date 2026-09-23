@@ -1,7 +1,8 @@
 import { db } from '../db';
 import { supabase, isSupabaseConfigured } from './supabase/client';
 import { TraineeLogSummary } from '../types';
-import { isPastCutoffTime, getUAEDateString } from '../utils/timezone';
+import { isPastCutoffTime, isWeekend, getUAEDateString } from '../utils/timezone';
+import { holidayService } from './hybridHolidayService';
 
 export interface EmailSettings {
   autoEmailEnabled: boolean;
@@ -142,8 +143,12 @@ export class EmailService {
     const settings = await this.getEmailSettings();
     const errors: string[] = [];
     let count = 0;
-
     if (!settings.autoEmailEnabled) return { dispatchedCount: 0, errors: [] };
+    if (isWeekend(targetDate)) return { dispatchedCount: 0, errors: [] }; // No emails on weekends!
+
+    const holidays = await holidayService.getAllHolidays();
+    if (holidays.some((h) => h.date === targetDate)) return { dispatchedCount: 0, errors: [] }; // No emails on holidays!
+
     if (!isPastCutoffTime(targetDate)) return { dispatchedCount: 0, errors: [] };
     if (settings.lastNoShowNotificationDate === targetDate) return { dispatchedCount: 0, errors: [] };
 

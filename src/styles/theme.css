@@ -386,6 +386,12 @@ body {
   border-color: #CBD5E1;
 }
 
+.badge-holiday {
+  background-color: #FDF2F8;
+  color: #DB2777;
+  border-color: #FBCFE8;
+}
+
 /* Trainee Mobile Cards Grid */
 .trainee-grid {
   display: grid;
