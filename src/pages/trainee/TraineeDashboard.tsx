@@ -58,6 +58,12 @@ export const TraineeDashboard: React.FC<TraineeDashboardProps> = ({ currentUser 
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
+  // Modal error states (to ensure errors show inside the active modal box)
+  const [attendanceError, setAttendanceError] = useState<string | null>(null);
+  const [signOutError, setSignOutError] = useState<string | null>(null);
+  const [allocationError, setAllocationError] = useState<string | null>(null);
+  const [taskError, setTaskError] = useState<string | null>(null);
+
   const loadData = async () => {
     if (!currentUser.traineeId) return;
 
@@ -94,6 +100,7 @@ export const TraineeDashboard: React.FC<TraineeDashboardProps> = ({ currentUser 
     if (!trainee) return;
     setLoading(true);
     setNotification(null);
+    setAttendanceError(null);
 
     // Fetch fresh geofence settings from central cloud database
     const geoSettings = await settingsService.getGeofenceSettings();
@@ -101,9 +108,11 @@ export const TraineeDashboard: React.FC<TraineeDashboardProps> = ({ currentUser 
       const locRes = await getDeviceLocation();
       if (!locRes.success || !locRes.coords) {
         setLoading(false);
+        const errMsg = locRes.error || 'GPS Location permission required to log attendance.';
+        setAttendanceError(errMsg);
         setNotification({
           type: 'error',
-          text: locRes.error || 'GPS Location permission required to log attendance.',
+          text: errMsg,
         });
         return;
       }
@@ -118,9 +127,11 @@ export const TraineeDashboard: React.FC<TraineeDashboardProps> = ({ currentUser 
 
       if (!check.isWithin) {
         setLoading(false);
+        const errMsg = `🛑 Attendance Log In Restricted: You are currently ${check.formattedDistance} away from Etihad Engineering facility. Attendance Log In is allowed within ${geoSettings.loginRadiusMeters} meters.`;
+        setAttendanceError(errMsg);
         setNotification({
           type: 'error',
-          text: `🛑 Attendance Log In Restricted: You are currently ${check.formattedDistance} away from Etihad Engineering facility. Attendance Log In is allowed within ${geoSettings.loginRadiusMeters} meters.`,
+          text: errMsg,
         });
         return;
       }
@@ -134,6 +145,7 @@ export const TraineeDashboard: React.FC<TraineeDashboardProps> = ({ currentUser 
     setLoading(false);
     if (logRes.success && logRes.attendance) {
       setTodayAttendance(logRes.attendance);
+      setAttendanceError(null);
       setIsAttendanceModalOpen(false);
       setNotification({
         type: 'success',
@@ -151,7 +163,9 @@ export const TraineeDashboard: React.FC<TraineeDashboardProps> = ({ currentUser 
         ).catch((err) => console.warn('Failed to send Late to Work email:', err));
       }
     } else {
-      setNotification({ type: 'error', text: logRes.error || 'Failed to log attendance.' });
+      const errMsg = logRes.error || 'Failed to log attendance.';
+      setAttendanceError(errMsg);
+      setNotification({ type: 'error', text: errMsg });
     }
   };
 
@@ -161,6 +175,7 @@ export const TraineeDashboard: React.FC<TraineeDashboardProps> = ({ currentUser 
     if (!trainee) return;
     setLoading(true);
     setNotification(null);
+    setAllocationError(null);
 
     const res = await allocationService.addAllocation({
       traineeId: trainee.traineeId,
@@ -175,6 +190,7 @@ export const TraineeDashboard: React.FC<TraineeDashboardProps> = ({ currentUser 
     setLoading(false);
     if (res.success) {
       setIsAllocationModalOpen(false);
+      setAllocationError(null);
       setAllocationForm({
         location: '',
         insideOutside: 'Inside',
@@ -185,7 +201,9 @@ export const TraineeDashboard: React.FC<TraineeDashboardProps> = ({ currentUser 
       });
       setNotification({ type: 'success', text: 'Workstation Allocation successfully submitted.' });
     } else {
-      setNotification({ type: 'error', text: res.error || 'Failed to submit allocation.' });
+      const errMsg = res.error || 'Failed to submit allocation.';
+      setAllocationError(errMsg);
+      setNotification({ type: 'error', text: errMsg });
     }
   };
 
@@ -195,16 +213,20 @@ export const TraineeDashboard: React.FC<TraineeDashboardProps> = ({ currentUser 
     if (!trainee || taskCountInput === '') return;
     setLoading(true);
     setNotification(null);
+    setTaskError(null);
 
     const res = await taskService.addTaskCount(trainee.traineeId, Number(taskCountInput));
     setLoading(false);
 
     if (res.success) {
       setIsTaskModalOpen(false);
+      setTaskError(null);
       setTaskCountInput('');
       setNotification({ type: 'success', text: `Task count (${res.taskCount?.taskCount}) submitted successfully.` });
     } else {
-      setNotification({ type: 'error', text: res.error || 'Failed to submit task count.' });
+      const errMsg = res.error || 'Failed to submit task count.';
+      setTaskError(errMsg);
+      setNotification({ type: 'error', text: errMsg });
     }
   };
 
@@ -213,6 +235,7 @@ export const TraineeDashboard: React.FC<TraineeDashboardProps> = ({ currentUser 
     if (!trainee) return;
     setLoading(true);
     setNotification(null);
+    setSignOutError(null);
 
     // Fetch fresh geofence settings from central cloud database
     const geoSettings = await settingsService.getGeofenceSettings();
@@ -220,9 +243,11 @@ export const TraineeDashboard: React.FC<TraineeDashboardProps> = ({ currentUser 
       const locRes = await getDeviceLocation();
       if (!locRes.success || !locRes.coords) {
         setLoading(false);
+        const errMsg = locRes.error || 'GPS Location permission required to sign out.';
+        setSignOutError(errMsg);
         setNotification({
           type: 'error',
-          text: locRes.error || 'GPS Location permission required to sign out.',
+          text: errMsg,
         });
         return;
       }
@@ -237,9 +262,11 @@ export const TraineeDashboard: React.FC<TraineeDashboardProps> = ({ currentUser 
 
       if (!check.isWithin) {
         setLoading(false);
+        const errMsg = `🛑 Daily Sign Out Restricted: You are currently ${check.formattedDistance} away from Etihad Engineering facility. Daily Sign Out is allowed within ${geoSettings.signOutRadiusMeters} meters.`;
+        setSignOutError(errMsg);
         setNotification({
           type: 'error',
-          text: `🛑 Daily Sign Out Restricted: You are currently ${check.formattedDistance} away from Etihad Engineering facility. Daily Sign Out is allowed within ${geoSettings.signOutRadiusMeters} meters.`,
+          text: errMsg,
         });
         return;
       }
@@ -250,13 +277,16 @@ export const TraineeDashboard: React.FC<TraineeDashboardProps> = ({ currentUser 
 
     if (res.success && res.signOut) {
       setTodaySignOut(res.signOut);
+      setSignOutError(null);
       setIsSignOutModalOpen(false);
       setNotification({
         type: 'success',
         text: `Successfully Signed Out! Time: ${res.signOut.signOutTime}`,
       });
     } else {
-      setNotification({ type: 'error', text: res.error || 'Failed to sign out.' });
+      const errMsg = res.error || 'Failed to sign out.';
+      setSignOutError(errMsg);
+      setNotification({ type: 'error', text: errMsg });
     }
   };
 
@@ -339,7 +369,10 @@ export const TraineeDashboard: React.FC<TraineeDashboardProps> = ({ currentUser 
         {/* CARD 1: ATTENDANCE */}
         <div
           className="action-card"
-          onClick={() => setIsAttendanceModalOpen(true)}
+          onClick={() => {
+            setAttendanceError(null);
+            setIsAttendanceModalOpen(true);
+          }}
           style={{
             borderColor: todayAttendance ? '#10B981' : '#C5A059',
             backgroundColor: todayAttendance ? '#F0FDF4' : '#FFFFFF',
@@ -365,7 +398,13 @@ export const TraineeDashboard: React.FC<TraineeDashboardProps> = ({ currentUser 
         </div>
 
         {/* CARD 2: ALLOCATION */}
-        <div className="action-card" onClick={() => setIsAllocationModalOpen(true)}>
+        <div
+          className="action-card"
+          onClick={() => {
+            setAllocationError(null);
+            setIsAllocationModalOpen(true);
+          }}
+        >
           <div className="action-card-icon">
             <Compass size={26} />
           </div>
@@ -376,7 +415,13 @@ export const TraineeDashboard: React.FC<TraineeDashboardProps> = ({ currentUser 
         </div>
 
         {/* CARD 3: TASK COUNT */}
-        <div className="action-card" onClick={() => setIsTaskModalOpen(true)}>
+        <div
+          className="action-card"
+          onClick={() => {
+            setTaskError(null);
+            setIsTaskModalOpen(true);
+          }}
+        >
           <div className="action-card-icon">
             <CheckSquare size={26} />
           </div>
@@ -389,7 +434,10 @@ export const TraineeDashboard: React.FC<TraineeDashboardProps> = ({ currentUser 
         {/* CARD 4: DAILY SIGN-OUT */}
         <div
           className="action-card"
-          onClick={() => setIsSignOutModalOpen(true)}
+          onClick={() => {
+            setSignOutError(null);
+            setIsSignOutModalOpen(true);
+          }}
           style={{
             borderColor: todaySignOut ? '#047857' : '#E2E8F0',
             backgroundColor: todaySignOut ? '#F0FDF4' : '#FFFFFF',
@@ -414,10 +462,24 @@ export const TraineeDashboard: React.FC<TraineeDashboardProps> = ({ currentUser 
       {/* Modal 1: Simple Attendance Logging Modal */}
       <Modal
         isOpen={isAttendanceModalOpen}
-        onClose={() => setIsAttendanceModalOpen(false)}
+        onClose={() => {
+          setIsAttendanceModalOpen(false);
+          setAttendanceError(null);
+        }}
         title="Log Today's Attendance"
       >
-        <div style={{ textAlign: 'center', padding: '1rem 0' }}>
+        <div style={{ textAlign: 'center', padding: '0.5rem 0' }}>
+          {/* Prominent in-modal error alert */}
+          {attendanceError && (
+            <div style={{ textAlign: 'left', marginBottom: '1.25rem' }}>
+              <Notification
+                type="error"
+                message={attendanceError}
+                onClose={() => setAttendanceError(null)}
+              />
+            </div>
+          )}
+
           <div style={{ fontSize: '0.85rem', color: '#64748B', fontWeight: 600 }}>TODAY'S DATE</div>
           <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0A192F', marginBottom: '1rem' }}>
             {formatDisplayDate(getUAEDateString())}
@@ -455,10 +517,22 @@ export const TraineeDashboard: React.FC<TraineeDashboardProps> = ({ currentUser 
       {/* Modal 2: Allocation Form */}
       <Modal
         isOpen={isAllocationModalOpen}
-        onClose={() => setIsAllocationModalOpen(false)}
+        onClose={() => {
+          setIsAllocationModalOpen(false);
+          setAllocationError(null);
+        }}
         title="Submit Workstation Allocation"
         maxWidth="600px"
       >
+        {allocationError && (
+          <div style={{ marginBottom: '1.25rem' }}>
+            <Notification
+              type="error"
+              message={allocationError}
+              onClose={() => setAllocationError(null)}
+            />
+          </div>
+        )}
         <form onSubmit={handleAllocationSubmit}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem' }}>
             <div className="form-group">
@@ -550,9 +624,21 @@ export const TraineeDashboard: React.FC<TraineeDashboardProps> = ({ currentUser 
       {/* Modal 3: Task Count Form */}
       <Modal
         isOpen={isTaskModalOpen}
-        onClose={() => setIsTaskModalOpen(false)}
+        onClose={() => {
+          setIsTaskModalOpen(false);
+          setTaskError(null);
+        }}
         title="Enter Your Latest Task Count"
       >
+        {taskError && (
+          <div style={{ marginBottom: '1.25rem' }}>
+            <Notification
+              type="error"
+              message={taskError}
+              onClose={() => setTaskError(null)}
+            />
+          </div>
+        )}
         <form onSubmit={handleTaskSubmit}>
           <div className="form-group">
             <label className="form-label">Completed Task Count *</label>
@@ -582,10 +668,24 @@ export const TraineeDashboard: React.FC<TraineeDashboardProps> = ({ currentUser 
       {/* Modal 4: Daily Sign-Out Confirmation */}
       <Modal
         isOpen={isSignOutModalOpen}
-        onClose={() => setIsSignOutModalOpen(false)}
+        onClose={() => {
+          setIsSignOutModalOpen(false);
+          setSignOutError(null);
+        }}
         title="Daily Sign-Out Verification"
       >
-        <div style={{ textAlign: 'center', padding: '1rem 0' }}>
+        <div style={{ textAlign: 'center', padding: '0.5rem 0' }}>
+          {/* Prominent in-modal error alert */}
+          {signOutError && (
+            <div style={{ textAlign: 'left', marginBottom: '1.25rem' }}>
+              <Notification
+                type="error"
+                message={signOutError}
+                onClose={() => setSignOutError(null)}
+              />
+            </div>
+          )}
+
           {todaySignOut ? (
             <div style={{ background: '#ECFDF5', border: '1px solid #A7F3D0', padding: '1.25rem', borderRadius: '10px' }}>
               <CheckCircle2 size={32} color="#047857" style={{ margin: '0 auto 0.5rem auto' }} />
