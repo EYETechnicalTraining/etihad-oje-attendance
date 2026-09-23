@@ -266,12 +266,12 @@ export const AuditBackupTab: React.FC = () => {
 
       {notification && <Notification type={notification.type} message={notification.text} onClose={() => setNotification(null)} />}
 
-      {/* SECTION 1: Automated No-Show Outlook Email Dispatch Settings Card */}
+      {/* SECTION 1: Automated No-Show Microsoft Power Automate Email Dispatch Settings Card */}
       <div className="card" style={{ borderLeft: '5px solid #002060', marginBottom: '1.5rem' }}>
         <div className="card-header">
           <span className="card-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <Mail size={20} color="#002060" />
-            <span>Automated 08:00 AM No-Show Outlook Email Dispatch</span>
+            <span>Automated 08:00 AM No-Show Microsoft Power Automate Email Dispatch</span>
           </span>
           <button
             type="button"
@@ -279,29 +279,30 @@ export const AuditBackupTab: React.FC = () => {
             onClick={() => setShowEmailGuide(!showEmailGuide)}
           >
             <HelpCircle size={14} />
-            <span>{showEmailGuide ? 'Hide Outlook Setup Guide' : 'Outlook Setup Steps'}</span>
+            <span>{showEmailGuide ? 'Hide Power Automate Guide' : 'Power Automate Setup Steps'}</span>
           </button>
         </div>
 
         {showEmailGuide && (
           <div style={{ background: '#F8FAFC', border: '1px solid #CBD5E1', padding: '1rem', borderRadius: '8px', marginBottom: '1.25rem', fontSize: '0.85rem' }}>
-            <strong style={{ color: '#0A192F', fontSize: '0.9rem' }}>📧 Step-by-step instructions to connect your Sir's Outlook Email:</strong>
+            <strong style={{ color: '#0A192F', fontSize: '0.9rem' }}>⚡ Step-by-step instructions to set up Microsoft Power Automate Flow:</strong>
             <ol style={{ marginLeft: '1.25rem', marginTop: '0.5rem', lineHeight: '1.7' }}>
-              <li>Create a free account at <strong><a href="https://www.emailjs.com" target="_blank" rel="noreferrer">emailjs.com</a></strong> (100% free, 200 emails/month).</li>
-              <li>In EmailJS Dashboard, click <strong>Add New Service</strong> ➔ Select <strong>Outlook / Microsoft 365</strong>.</li>
-              <li>Log in with your sir's Outlook email address (e.g. <code>supervisor@etihad.ae</code> or <code>@outlook.com</code>) to authorize sending.</li>
-              <li>Copy the <strong>Service ID</strong> (e.g. <code>service_xxxxxxx</code>).</li>
-              <li>Go to <strong>Email Templates</strong> ➔ Create Template with subject <code>[Notice] Marked as No Show - Etihad OJE Training</code> and text:
-                <br /><code>Dear {"{{to_name}}"}, You have not logged attendance before 08:00 AM for today ({"{{date}}"}). Your status is recorded as NO SHOW.</code>
+              <li>Open <strong><a href="https://make.powerautomate.com" target="_blank" rel="noreferrer">make.powerautomate.com</a></strong> and log in with your sir's Etihad / Microsoft 365 account.</li>
+              <li>Click <strong>Create</strong> ➔ Select <strong>Instant cloud flow</strong> (or Automated flow).</li>
+              <li>Add Trigger: Search and select <strong>When an HTTP request is received</strong>.</li>
+              <li>Add Action: Search and select <strong>Send an email (V2)</strong> (Office 365 Outlook).
+                <br />• <strong>To</strong>: Click dynamic content ➔ enter <code>@{"triggerBody()?['to_email']"}</code>
+                <br />• <strong>Subject</strong>: Click dynamic content ➔ enter <code>@{"triggerBody()?['subject']"}</code>
+                <br />• <strong>Body</strong>: Click dynamic content ➔ enter <code>@{"triggerBody()?['message']"}</code>
               </li>
-              <li>Copy the <strong>Template ID</strong> (e.g. <code>template_xxxxxxx</code>) and <strong>Public Key</strong> (under Account Settings).</li>
-              <li>Paste these keys below and click <strong>Save Email Settings</strong>. Emails will now automatically dispatch from your sir's Outlook email at 08:00 AM for any No Show students!</li>
+              <li>Click <strong>Save</strong>. Power Automate will generate an <strong>HTTP POST URL</strong>.</li>
+              <li>Copy the <strong>HTTP POST URL</strong>, paste it into the field below, and click <strong>Save Email Settings</strong>! Emails will now automatically dispatch directly from your sir's official Outlook account at 08:00 AM!</li>
             </ol>
           </div>
         )}
 
         <form onSubmit={handleSaveEmailSettings}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1rem' }}>
             <div className="form-group">
               <label className="form-label">Auto Email Dispatch Switch</label>
               <select
@@ -326,36 +327,14 @@ export const AuditBackupTab: React.FC = () => {
               />
             </div>
 
-            <div className="form-group">
-              <label className="form-label">EmailJS Service ID (Outlook)</label>
+            <div className="form-group" style={{ gridColumn: 'span 2' }}>
+              <label className="form-label">Microsoft Power Automate Webhook HTTP URL *</label>
               <input
-                type="text"
+                type="url"
                 className="form-control"
-                placeholder="e.g. service_outlook123"
-                value={emailConfig.emailjsServiceId}
-                onChange={(e) => setEmailConfig({ ...emailConfig, emailjsServiceId: e.target.value })}
-              />
-            </div>
-
-            <div className="form-group">
-              <label className="form-label">EmailJS Template ID</label>
-              <input
-                type="text"
-                className="form-control"
-                placeholder="e.g. template_noshow456"
-                value={emailConfig.emailjsTemplateId}
-                onChange={(e) => setEmailConfig({ ...emailConfig, emailjsTemplateId: e.target.value })}
-              />
-            </div>
-
-            <div className="form-group">
-              <label className="form-label">EmailJS Public Key</label>
-              <input
-                type="text"
-                className="form-control"
-                placeholder="e.g. pub_key_789xxx"
-                value={emailConfig.emailjsPublicKey}
-                onChange={(e) => setEmailConfig({ ...emailConfig, emailjsPublicKey: e.target.value })}
+                placeholder="e.g. https://prod-xx.uaenorth.logic.azure.com:443/workflows/..."
+                value={emailConfig.powerAutomateWebhookUrl}
+                onChange={(e) => setEmailConfig({ ...emailConfig, powerAutomateWebhookUrl: e.target.value })}
               />
             </div>
           </div>

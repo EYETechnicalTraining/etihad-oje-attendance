@@ -5,19 +5,15 @@ import { isPastCutoffTime, getUAEDateString } from '../utils/timezone';
 
 export interface EmailSettings {
   autoEmailEnabled: boolean;
-  senderOutlookEmail: string; // Supervisor's Outlook Email Address
-  emailjsServiceId: string;
-  emailjsTemplateId: string;
-  emailjsPublicKey: string;
+  senderOutlookEmail: string;       // Supervisor's Outlook Email Address
+  powerAutomateWebhookUrl: string;  // Power Automate HTTP Webhook URL
   lastNoShowNotificationDate: string; // YYYY-MM-DD
 }
 
 export const DEFAULT_EMAIL_SETTINGS: EmailSettings = {
   autoEmailEnabled: true,
   senderOutlookEmail: 'supervisor@etihad.ae',
-  emailjsServiceId: '',
-  emailjsTemplateId: '',
-  emailjsPublicKey: '',
+  powerAutomateWebhookUrl: '',
   lastNoShowNotificationDate: '',
 };
 
@@ -93,7 +89,7 @@ export class EmailService {
   }
 
   /**
-   * Dispatch single email notification via EmailJS REST API
+   * Dispatch single email notification via Microsoft Power Automate HTTP Webhook
    */
   async sendSingleEmail(
     toName: string,
@@ -101,47 +97,43 @@ export class EmailService {
     dateStr: string,
     settings: EmailSettings
   ): Promise<{ success: boolean; error?: string }> {
-    if (!settings.emailjsServiceId || !settings.emailjsTemplateId || !settings.emailjsPublicKey) {
+    if (!settings.powerAutomateWebhookUrl) {
       return {
         success: false,
-        error: 'EmailJS credentials not configured yet. Please configure Service ID, Template ID, and Public Key in Admin Settings.',
+        error: 'Power Automate Webhook URL not configured. Please paste your Power Automate HTTP URL in Admin Settings.',
       };
     }
 
     try {
-      const response = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
+      const response = await fetch(settings.powerAutomateWebhookUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          service_id: settings.emailjsServiceId,
-          template_id: settings.emailjsTemplateId,
-          user_id: settings.emailjsPublicKey,
-          template_params: {
-            to_name: toName,
-            to_email: toEmail,
-            from_email: settings.senderOutlookEmail,
-            date: dateStr,
-            message: `Dear ${toName},\n\nYou have not logged your attendance before the 08:00 AM UAE cutoff time for today (${dateStr}). As per Etihad Engineering OJE training regulations, your status for today has been recorded as NO SHOW.\n\nRegards,\nEtihad Engineering Technical Training`,
-          },
+          to_name: toName,
+          to_email: toEmail,
+          from_email: settings.senderOutlookEmail,
+          date: dateStr,
+          subject: `[Notice] Marked as No Show - Etihad Engineering OJE Training`,
+          message: `Dear ${toName},\n\nYou have not logged your attendance before the 08:00 AM UAE cutoff time for today (${dateStr}). As per Etihad Engineering OJE training regulations, your status for today has been recorded as NO SHOW.\n\nRegards,\nEtihad Engineering Technical Training`,
         }),
       });
 
-      if (response.ok) {
+      if (response.ok || response.status === 202 || response.status === 200) {
         return { success: true };
       } else {
         const text = await response.text();
-        return { success: false, error: text || 'EmailJS service returned error status.' };
+        return { success: false, error: text || `Power Automate HTTP error ${response.status}` };
       }
     } catch (err: any) {
-      return { success: false, error: err.message || 'Failed to dispatch email.' };
+      return { success: false, error: err.message || 'Failed to trigger Power Automate flow.' };
     }
   }
 
   /**
    * Automated check triggered after 08:00 AM.
-   * Sends automated No Show notification email to all unlogged trainees.
+   * Triggers Power Automate flow to send automated No Show Outlook emails to all unlogged trainees.
    */
   async triggerAutomatedNoShowEmails(
     targetDate: string,
