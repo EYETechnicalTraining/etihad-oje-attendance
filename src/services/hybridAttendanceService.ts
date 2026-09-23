@@ -149,6 +149,20 @@ export class HybridAttendanceService implements IAttendanceService {
         }
       }
 
+      if (status === 'No Show') {
+        loginTime = '-';
+      } else if (status === 'Late to Work') {
+        if (!loginTime || loginTime === '-' || loginTime.startsWith('Manual') || loginTime === 'Logged after 7:30 AM') {
+          loginTime = 'Logged in after 7:30 am';
+        }
+      } else if (status === 'Present') {
+        if (!loginTime || loginTime === '-' || loginTime === 'Manual (Present)') {
+          loginTime = 'Logged in before 7:30am';
+        }
+      }
+
+      const effectiveSignOutTime = status === 'No Show' ? '-' : signOutTime;
+
       const allocations = (allAllocations || []).filter((al: any) => al.trainee_id === trainee.trainee_id);
       const traineeTasks = (allTaskCounts || [])
         .filter((tc: any) => tc.trainee_id === trainee.trainee_id)
@@ -165,7 +179,7 @@ export class HybridAttendanceService implements IAttendanceService {
         batch: trainee.batch_id,
         status,
         loginTime,
-        signOutTime,
+        signOutTime: effectiveSignOutTime,
         allocationCount: allocations.length,
         latestTaskCount: latestTask,
         accountStatus: trainee.active ? 'Active' : 'Disabled',
@@ -181,26 +195,52 @@ export class HybridAttendanceService implements IAttendanceService {
   async updateTraineeAttendanceStatus(
     traineeId: string,
     date: string,
-    newStatus: AttendanceStatus
+    newStatus: AttendanceStatus,
+    prevStatus?: AttendanceStatus,
+    existingLoginTime?: string
   ): Promise<{ success: boolean; error?: string }> {
     if (!isSupabaseConfigured || !supabase) {
-      return await dexieAttendance.updateTraineeAttendanceStatus(traineeId, date, newStatus);
+      return await dexieAttendance.updateTraineeAttendanceStatus(traineeId, date, newStatus, prevStatus, existingLoginTime);
     }
 
     try {
       const existing = await this.getTraineeAttendanceForDate(traineeId, date);
 
-      const loginTime = newStatus === 'Late to Work' ? 'Logged after 7:30 AM' : `Manual (${newStatus})`;
+      let computedLoginTime = '-';
+      if (newStatus === 'No Show') {
+        computedLoginTime = '-';
+        // Delete sign_outs row for No Show
+        await supabase.from('sign_outs').delete().eq('trainee_id', traineeId).eq('date', date);
+      } else if (newStatus === 'Late to Work') {
+        computedLoginTime = 'Logged in after 7:30 am';
+      } else if (newStatus === 'Present') {
+        const effectivePrevStatus = prevStatus || existing?.status;
+        const effectivePrevLoginTime = existingLoginTime || existing?.loginTime;
+
+        if (effectivePrevStatus === 'Late to Work' && effectivePrevLoginTime && effectivePrevLoginTime !== '-' && effectivePrevLoginTime !== 'N/A') {
+          computedLoginTime = effectivePrevLoginTime;
+        } else if (
+          effectivePrevStatus === 'No Show' ||
+          !effectivePrevLoginTime ||
+          effectivePrevLoginTime === '-' ||
+          effectivePrevLoginTime === 'N/A' ||
+          effectivePrevLoginTime.startsWith('Manual')
+        ) {
+          computedLoginTime = 'Logged in before 7:30am';
+        } else {
+          computedLoginTime = effectivePrevLoginTime;
+        }
+      } else {
+        computedLoginTime = `Manual (${newStatus})`;
+      }
 
       if (existing) {
-        const updatePayload: any = { status: newStatus };
-        if (newStatus === 'Late to Work' || existing.loginTime?.startsWith('Manual')) {
-          updatePayload.login_time = loginTime;
-        }
-
         const { error } = await supabase
           .from('attendance')
-          .update(updatePayload)
+          .update({
+            status: newStatus,
+            login_time: computedLoginTime,
+          })
           .eq('trainee_id', traineeId)
           .eq('date', date);
 
@@ -211,7 +251,7 @@ export class HybridAttendanceService implements IAttendanceService {
         const { error } = await supabase.from('attendance').insert([{
           trainee_id: traineeId,
           date,
-          login_time: loginTime,
+          login_time: computedLoginTime,
           status: newStatus,
           authentication_method: 'Password Fallback',
           created_at: createdAt,
@@ -221,7 +261,7 @@ export class HybridAttendanceService implements IAttendanceService {
       }
 
       // Sync Dexie locally
-      await dexieAttendance.updateTraineeAttendanceStatus(traineeId, date, newStatus);
+      await dexieAttendance.updateTraineeAttendanceStatus(traineeId, date, newStatus, prevStatus, existingLoginTime);
 
       return { success: true };
     } catch (err: any) {

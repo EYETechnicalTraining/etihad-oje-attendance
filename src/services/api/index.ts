@@ -49,7 +49,13 @@ export interface IAttendanceService {
   getTraineeAttendanceForDate(traineeId: string, date: string): Promise<Attendance | null>;
   logAttendance(traineeId: string, authMethod: 'Biometric Passkey (Fingerprint/PIN)' | 'Face Verification Selfie' | 'Password Fallback' | 'WebAuthn/Passkey'): Promise<{ success: boolean; attendance?: Attendance; error?: string }>;
   getTraineeLogsForDate(date: string): Promise<TraineeLogSummary[]>;
-  updateTraineeAttendanceStatus(traineeId: string, date: string, newStatus: AttendanceStatus): Promise<{ success: boolean; error?: string }>;
+  updateTraineeAttendanceStatus(
+    traineeId: string,
+    date: string,
+    newStatus: AttendanceStatus,
+    prevStatus?: AttendanceStatus,
+    existingLoginTime?: string
+  ): Promise<{ success: boolean; error?: string }>;
 }
 
 export interface IAllocationService {

@@ -90,21 +90,85 @@ export const TraineeLogsTab: React.FC = () => {
     setStatusEdits((prev) => ({ ...prev, [traineeId]: newStatus }));
   };
 
-  const handleSaveStatus = async (traineeId: string, fallbackStatus: AttendanceStatus) => {
-    const targetStatus = statusEdits[traineeId] || fallbackStatus;
+  const handleSaveStatus = async (log: TraineeLogSummary) => {
+    const traineeId = log.traineeId;
+    const targetStatus = statusEdits[traineeId] || log.status;
+    const prevStatus = log.status;
+    const existingLoginTime = log.loginTime;
+
+    // Calculate new loginTime and signOutTime according to exact user rules:
+    let newLoginTime = existingLoginTime;
+    let newSignOutTime = log.signOutTime;
+
+    if (targetStatus === 'No Show') {
+      newLoginTime = '-';
+      newSignOutTime = '-';
+    } else if (targetStatus === 'Late to Work') {
+      newLoginTime = 'Logged in after 7:30 am';
+    } else if (targetStatus === 'Present') {
+      if (prevStatus === 'Late to Work' && existingLoginTime && existingLoginTime !== '-' && existingLoginTime !== 'N/A') {
+        newLoginTime = existingLoginTime;
+      } else if (
+        prevStatus === 'No Show' ||
+        !existingLoginTime ||
+        existingLoginTime === '-' ||
+        existingLoginTime === 'N/A' ||
+        existingLoginTime.startsWith('Manual')
+      ) {
+        newLoginTime = 'Logged in before 7:30am';
+      } else {
+        newLoginTime = existingLoginTime;
+      }
+    } else {
+      newLoginTime = `Manual (${targetStatus})`;
+      newSignOutTime = '-';
+    }
+
+    // 1. INSTANT OPTIMISTIC UI UPDATE ON FIRST CLICK!
+    setLogs((prevLogs) =>
+      prevLogs.map((l) =>
+        l.traineeId === traineeId
+          ? {
+              ...l,
+              status: targetStatus,
+              loginTime: newLoginTime,
+              signOutTime: newSignOutTime,
+            }
+          : l
+      )
+    );
+    setStatusEdits((prev) => ({ ...prev, [traineeId]: targetStatus }));
     setSavingId(traineeId);
     setNotification(null);
-    await attendanceService.updateTraineeAttendanceStatus(traineeId, selectedDate, targetStatus);
 
-    // If status changed to Late to Work or No Show, dispatch notification email ONLY to this one trainee
-    const targetTrainee = logs.find((l) => l.traineeId === traineeId);
+    // 2. Perform DB update
+    const updateRes = await attendanceService.updateTraineeAttendanceStatus(
+      traineeId,
+      selectedDate,
+      targetStatus,
+      prevStatus,
+      existingLoginTime
+    );
+
+    if (!updateRes.success) {
+      setNotification({
+        type: 'error',
+        text: `Failed to update status for ${log.name}: ${updateRes.error || 'Database error'}`,
+      });
+      setSavingId(null);
+      await loadLogs(selectedDate, false);
+      return;
+    }
+
+    // 3. Dispatch notification email ONLY to this one trainee if Late to Work or No Show
+    const targetTrainee = log;
     if (targetTrainee && targetTrainee.username) {
       if (targetStatus === 'Late to Work') {
         const res = await emailService.sendLateToWorkEmail(
           targetTrainee.name,
           targetTrainee.username,
           selectedDate,
-          'Logged after 7:30 AM',
+          'Logged in after 7:30 am',
           traineeId,
           undefined,
           true, // isManual
@@ -149,7 +213,7 @@ export const TraineeLogsTab: React.FC = () => {
       }
     }
 
-    // Refresh logs table WITHOUT triggering any automated batch emails!
+    // 4. Refresh logs table WITHOUT triggering any automated batch emails!
     await loadLogs(selectedDate, false);
     setSavingId(null);
   };
@@ -310,7 +374,7 @@ export const TraineeLogsTab: React.FC = () => {
                           <option value="Stand Down">Stand Down</option>
                         </select>
                         <button
-                          onClick={() => handleSaveStatus(log.traineeId, log.status)}
+                          onClick={() => handleSaveStatus(log)}
                           disabled={savingId === log.traineeId}
                           className="btn btn-navy btn-sm"
                           style={{

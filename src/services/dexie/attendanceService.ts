@@ -115,6 +115,20 @@ export class DexieAttendanceService implements IAttendanceService {
         }
       }
 
+      if (status === 'No Show') {
+        loginTime = '-';
+      } else if (status === 'Late to Work') {
+        if (!loginTime || loginTime === '-' || loginTime.startsWith('Manual') || loginTime === 'Logged after 7:30 AM') {
+          loginTime = 'Logged in after 7:30 am';
+        }
+      } else if (status === 'Present') {
+        if (!loginTime || loginTime === '-' || loginTime === 'Manual (Present)') {
+          loginTime = 'Logged in before 7:30am';
+        }
+      }
+
+      const effectiveSignOutTime = status === 'No Show' ? '-' : signOutTime;
+
       // Allocations for this trainee & date
       const allocations = allAllocations.filter((al) => al.traineeId === trainee.traineeId);
       
@@ -135,7 +149,7 @@ export class DexieAttendanceService implements IAttendanceService {
         batch: trainee.batchId,
         status,
         loginTime,
-        signOutTime,
+        signOutTime: effectiveSignOutTime,
         allocationCount: allocations.length,
         latestTaskCount: latestTask,
         accountStatus: trainee.active ? 'Active' : 'Disabled',
@@ -151,29 +165,56 @@ export class DexieAttendanceService implements IAttendanceService {
   async updateTraineeAttendanceStatus(
     traineeId: string,
     date: string,
-    newStatus: AttendanceStatus
+    newStatus: AttendanceStatus,
+    prevStatus?: AttendanceStatus,
+    existingLoginTime?: string
   ): Promise<{ success: boolean; error?: string }> {
     try {
       const existing = await this.getTraineeAttendanceForDate(traineeId, date);
       const now = new Date();
       const timeStr = getUAETimeString(now, true);
 
-      const loginTime = newStatus === 'Late to Work' ? 'Logged after 7:30 AM' : `Manual (${newStatus})`;
+      let computedLoginTime = '-';
+      if (newStatus === 'No Show') {
+        computedLoginTime = '-';
+        // Clear sign out record for No Show
+        await db.signOuts.where('[traineeId+date]').equals([traineeId, date]).delete();
+      } else if (newStatus === 'Late to Work') {
+        computedLoginTime = 'Logged in after 7:30 am';
+      } else if (newStatus === 'Present') {
+        const effectivePrevStatus = prevStatus || existing?.status;
+        const effectivePrevLoginTime = existingLoginTime || existing?.loginTime;
+
+        if (effectivePrevStatus === 'Late to Work' && effectivePrevLoginTime && effectivePrevLoginTime !== '-' && effectivePrevLoginTime !== 'N/A') {
+          computedLoginTime = effectivePrevLoginTime;
+        } else if (
+          effectivePrevStatus === 'No Show' ||
+          !effectivePrevLoginTime ||
+          effectivePrevLoginTime === '-' ||
+          effectivePrevLoginTime === 'N/A' ||
+          effectivePrevLoginTime.startsWith('Manual')
+        ) {
+          computedLoginTime = 'Logged in before 7:30am';
+        } else {
+          computedLoginTime = effectivePrevLoginTime;
+        }
+      } else {
+        computedLoginTime = `Manual (${newStatus})`;
+      }
 
       if (existing) {
-        const updatePayload: any = { status: newStatus };
-        if (newStatus === 'Late to Work' || existing.loginTime?.startsWith('Manual')) {
-          updatePayload.loginTime = loginTime;
-        }
         await db.attendance
           .where('[traineeId+date]')
           .equals([traineeId, date])
-          .modify(updatePayload);
+          .modify({
+            status: newStatus,
+            loginTime: computedLoginTime,
+          });
       } else {
         await db.attendance.add({
           traineeId,
           date,
-          loginTime,
+          loginTime: computedLoginTime,
           status: newStatus,
           authenticationMethod: 'Password Fallback',
           createdAt: new Date().toISOString(),

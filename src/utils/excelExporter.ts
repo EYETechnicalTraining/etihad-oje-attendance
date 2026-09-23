@@ -104,6 +104,19 @@ export async function generateMatrixExcelReport(options: ExcelExportOptions): Pr
         status = 'No Show';
       }
 
+      if (status === 'No Show') {
+        loginTime = '-';
+        signOutTime = '-';
+      } else if (status === 'Late to Work') {
+        if (!loginTime || loginTime === '-' || loginTime.startsWith('Manual') || loginTime === 'Logged after 7:30 AM') {
+          loginTime = 'Logged in after 7:30 am';
+        }
+      } else if (status === 'Present') {
+        if (!loginTime || loginTime === '-' || loginTime === 'Manual (Present)') {
+          loginTime = 'Logged in before 7:30am';
+        }
+      }
+
       row.push(status, loginTime, signOutTime);
     }
 

@@ -55,17 +55,17 @@ export function generateAttendanceEmailHtml(options: {
     timingValue = 'Not Recorded (Absent at Cutoff)';
   } else if (isManual) {
     timingLabel = 'Recorded Timing';
-    timingValue = 'Logged after 7:30 AM';
+    timingValue = 'Logged in after 7:30 am';
   } else {
     timingLabel = 'Recorded Timestamp';
-    timingValue = loginTime || 'Logged after 7:30 AM';
+    timingValue = loginTime || 'Logged in after 7:30 am';
   }
 
   let explanation = '';
   if (isNoShow) {
     explanation = `This is an official automated notification to inform you that you have <strong>not logged your attendance</strong> before the <strong>08:00 AM UAE cutoff time</strong> for today. As per Etihad Engineering OJE/OJT Training regulations, your attendance record for today has been registered as <strong style="color: #991B1B;">NO SHOW</strong>.`;
   } else if (isManual) {
-    explanation = `This is an official notification to inform you that your attendance for today has been recorded as <strong>logged after 7:30 AM</strong> (past the official 07:30 AM UAE morning arrival cutoff). As per Etihad Engineering OJE/OJT Training regulations, your attendance status for today has been registered as <strong style="color: #92400E;">LATE TO WORK</strong>.`;
+    explanation = `This is an official notification to inform you that your attendance for today has been recorded as <strong>logged in after 7:30 am</strong> (past the official 07:30 AM UAE morning arrival cutoff). As per Etihad Engineering OJE/OJT Training regulations, your attendance status for today has been registered as <strong style="color: #92400E;">LATE TO WORK</strong>.`;
   } else {
     explanation = `This is an official automated notification to inform you that your attendance was logged at <strong>${loginTime || 'past 07:30 AM'}</strong>, which is past the official <strong>07:30 AM UAE morning arrival cutoff</strong>. As per Etihad Engineering OJE/OJT Training regulations, your attendance record for today has been registered as <strong style="color: #92400E;">LATE TO WORK</strong>.`;
   }
