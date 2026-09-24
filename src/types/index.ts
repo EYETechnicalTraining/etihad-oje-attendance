@@ -74,6 +74,21 @@ export interface Remark {
   timestamp: number;
 }
 
+export interface RemarkHistoryItem {
+  id?: number | string;
+  traineeId: string;
+  remark: string;
+  createdBy: string;
+  date: string; // YYYY-MM-DD
+  time: string; // HH:MM AM/PM
+  timestamp: number;
+  status: 'active' | 'deleted';
+  deletedBy?: string;
+  deletedAtDate?: string;
+  deletedAtTime?: string;
+  deletedTimestamp?: number;
+}
+
 export interface Attendance {
   id?: number;
   traineeId: string;

@@ -1,10 +1,13 @@
 import { traineeService as dexieTrainee } from './dexie/traineeService';
 import { supabase, isSupabaseConfigured } from './supabase/client';
-import { Trainee, Batch, Remark } from '../types';
+import { Trainee, Batch, Remark, RemarkHistoryItem } from '../types';
 import { db } from '../db';
 import { hashPassword } from '../utils/security';
 import { getUAEDateString, getUAETimeString } from '../utils/timezone';
 import { ITraineeService } from './api';
+import { auditService } from './hybridAuditService';
+
+const REMARKS_HISTORY_KEY = '__SYSTEM_REMARKS_HISTORY__';
 
 export class HybridTraineeService implements ITraineeService {
   async getAllTrainees(): Promise<Trainee[]> {
@@ -214,6 +217,75 @@ export class HybridTraineeService implements ITraineeService {
     }
   }
 
+  async getRemarksHistory(traineeId?: string): Promise<RemarkHistoryItem[]> {
+    let list: RemarkHistoryItem[] = [];
+
+    if (isSupabaseConfigured && supabase) {
+      try {
+        const { data } = await supabase
+          .from('users')
+          .select('password_hash')
+          .eq('username', REMARKS_HISTORY_KEY)
+          .maybeSingle();
+
+        if (data && data.password_hash) {
+          list = JSON.parse(data.password_hash);
+          // Sync to Dexie local cache
+          const local = await db.settings.where('key').equals('remarks_history').first();
+          if (local && local.id) {
+            await db.settings.update(local.id, { value: list });
+          } else {
+            await db.settings.add({ key: 'remarks_history', value: list });
+          }
+        }
+      } catch (err) {
+        console.warn('Failed to fetch remarks_history from Supabase, checking local:', err);
+      }
+    }
+
+    if (list.length === 0) {
+      const local = await db.settings.where('key').equals('remarks_history').first();
+      if (local && Array.isArray(local.value)) {
+        list = local.value;
+      }
+    }
+
+    if (!traineeId) return list;
+    const norm = traineeId.trim().toUpperCase();
+    return list.filter((h) => h.traineeId && h.traineeId.trim().toUpperCase() === norm);
+  }
+
+  private async saveRemarksHistoryList(list: RemarkHistoryItem[]): Promise<void> {
+    // 1. Save locally to Dexie
+    try {
+      const local = await db.settings.where('key').equals('remarks_history').first();
+      if (local && local.id) {
+        await db.settings.update(local.id, { value: list });
+      } else {
+        await db.settings.add({ key: 'remarks_history', value: list });
+      }
+    } catch (e) {
+      console.warn('Failed to save remarks_history in Dexie:', e);
+    }
+
+    // 2. Save centrally to Supabase users table
+    if (isSupabaseConfigured && supabase) {
+      try {
+        await supabase.from('users').upsert(
+          {
+            username: REMARKS_HISTORY_KEY,
+            password_hash: JSON.stringify(list),
+            role: 'MASTER',
+            active: true,
+          },
+          { onConflict: 'username' }
+        );
+      } catch (e) {
+        console.warn('Failed to save remarks_history in Supabase:', e);
+      }
+    }
+  }
+
   async addRemark(traineeId: string, remarkText: string, author: string): Promise<{ success: boolean; remark?: Remark; error?: string }> {
     const cleanRemark = remarkText.trim();
     if (!cleanRemark) return { success: false, error: 'Remark cannot be empty' };
@@ -222,7 +294,7 @@ export class HybridTraineeService implements ITraineeService {
     const time = getUAETimeString();
     const timestamp = Date.now();
 
-    // 1. Immediately save into Dexie local database for instantaneous reliability
+    // 1. Save into Dexie local database for instantaneous UI feedback
     let localId: number | undefined;
     try {
       localId = await db.remarks.add({
@@ -237,107 +309,103 @@ export class HybridTraineeService implements ITraineeService {
       // ignore
     }
 
-    if (!isSupabaseConfigured || !supabase) {
-      return {
-        success: true,
-        remark: {
-          id: localId || timestamp,
-          traineeId,
+    let supabaseId: number | undefined;
+
+    // 2. Save into Supabase active remarks table
+    if (isSupabaseConfigured && supabase) {
+      try {
+        const { data, error } = await supabase.from('remarks').insert([{
+          trainee_id: traineeId,
           remark: cleanRemark,
-          createdBy: author,
+          created_by: author,
           date,
           time,
           timestamp,
-        },
-      };
+        }]).select();
+
+        if (data && data.length > 0) {
+          supabaseId = data[0].id;
+          if (localId && localId !== supabaseId) {
+            try {
+              await db.remarks.delete(localId);
+              await db.remarks.put({
+                id: supabaseId,
+                traineeId,
+                remark: cleanRemark,
+                createdBy: author,
+                date,
+                time,
+                timestamp,
+              });
+            } catch {
+              // ignore
+            }
+          }
+        }
+      } catch (err: any) {
+        console.warn('Supabase remark insert error, kept in local storage:', err);
+      }
     }
 
+    const finalId = supabaseId || localId || timestamp;
+
+    // 3. Save into Remarks History (permanent historical ledger)
     try {
-      const { data, error } = await supabase.from('remarks').insert([{
-        trainee_id: traineeId,
+      const historyList = await this.getRemarksHistory();
+      const historyItem: RemarkHistoryItem = {
+        id: finalId,
+        traineeId,
         remark: cleanRemark,
-        created_by: author,
+        createdBy: author,
         date,
         time,
         timestamp,
-      }]).select();
-
-      if (error || !data || data.length === 0) {
-        console.warn('Supabase remark insert notice:', error?.message);
-        return {
-          success: true,
-          remark: {
-            id: localId || timestamp,
-            traineeId,
-            remark: cleanRemark,
-            createdBy: author,
-            date,
-            time,
-            timestamp,
-          },
-        };
-      }
-
-      const supabaseId = data[0].id;
-      // Align Dexie cache ID with Supabase ID
-      if (localId && localId !== supabaseId) {
-        try {
-          await db.remarks.delete(localId);
-          await db.remarks.put({
-            id: supabaseId,
-            traineeId,
-            remark: cleanRemark,
-            createdBy: author,
-            date,
-            time,
-            timestamp,
-          });
-        } catch {
-          // ignore
-        }
-      }
-
-      return {
-        success: true,
-        remark: {
-          id: supabaseId,
-          traineeId,
-          remark: cleanRemark,
-          createdBy: author,
-          date,
-          time,
-          timestamp,
-        },
+        status: 'active',
       };
-    } catch (err: any) {
-      console.warn('Supabase addRemark error, kept in local storage:', err);
-      return {
-        success: true,
-        remark: {
-          id: localId || timestamp,
-          traineeId,
-          remark: cleanRemark,
-          createdBy: author,
-          date,
-          time,
-          timestamp,
-        },
-      };
+      historyList.unshift(historyItem);
+      await this.saveRemarksHistoryList(historyList);
+    } catch (hErr) {
+      console.warn('Failed to update remarks history on add:', hErr);
     }
+
+    // 4. Log to central audit trail
+    try {
+      await auditService.logAction(
+        author,
+        `Added Remark for Trainee ${traineeId}: "${cleanRemark}"`,
+        traineeId
+      );
+    } catch {
+      // non-blocking
+    }
+
+    return {
+      success: true,
+      remark: {
+        id: finalId,
+        traineeId,
+        remark: cleanRemark,
+        createdBy: author,
+        date,
+        time,
+        timestamp,
+      },
+    };
   }
 
-  async deleteRemark(remarkId: number, traineeId?: string, remarkText?: string): Promise<{ success: boolean; error?: string }> {
+  async deleteRemark(remarkId: number, traineeId?: string, remarkText?: string, deleter?: string): Promise<{ success: boolean; error?: string }> {
     let success = true;
     let errorMsg = '';
+    const effectiveDeleter = deleter || 'selva.master';
 
-    // 1. Immediately delete from Dexie (local cache)
+    // 1. Delete from Dexie active table
     try {
-      await dexieTrainee.deleteRemark(remarkId, traineeId, remarkText);
+      await dexieTrainee.deleteRemark(remarkId, traineeId, remarkText, effectiveDeleter);
     } catch (err) {
       console.warn('Failed to delete remark from Dexie:', err);
     }
 
-    // 2. Delete in Supabase if configured
+    // 2. Delete from Supabase active table
     if (isSupabaseConfigured && supabase) {
       try {
         if (remarkId > 0) {
@@ -347,7 +415,6 @@ export class HybridTraineeService implements ITraineeService {
           }
         }
 
-        // Also delete any duplicate remarks with identical trainee_id and text created previously
         if (traineeId && remarkText) {
           const cleanText = remarkText.trim();
           const { error: dupError } = await supabase
@@ -363,6 +430,66 @@ export class HybridTraineeService implements ITraineeService {
         console.error('Failed to delete remark from Supabase:', err);
         success = false;
         errorMsg = err.message;
+      }
+    }
+
+    // 3. Mark as deleted in Remarks History so the history is permanently preserved
+    try {
+      const historyList = await this.getRemarksHistory();
+      let found = false;
+      const updated = historyList.map((h) => {
+        const matchesId = remarkId > 0 && h.id === remarkId;
+        const matchesText = traineeId && remarkText &&
+          h.traineeId.trim().toUpperCase() === traineeId.trim().toUpperCase() &&
+          h.remark.trim() === remarkText.trim() &&
+          h.status === 'active';
+
+        if (matchesId || matchesText) {
+          found = true;
+          return {
+            ...h,
+            status: 'deleted' as const,
+            deletedBy: effectiveDeleter,
+            deletedAtDate: getUAEDateString(),
+            deletedAtTime: getUAETimeString(),
+            deletedTimestamp: Date.now(),
+          };
+        }
+        return h;
+      });
+
+      if (!found && traineeId && remarkText) {
+        updated.unshift({
+          id: remarkId || Date.now(),
+          traineeId,
+          remark: remarkText.trim(),
+          createdBy: 'Supervisor',
+          date: getUAEDateString(),
+          time: getUAETimeString(),
+          timestamp: Date.now(),
+          status: 'deleted',
+          deletedBy: effectiveDeleter,
+          deletedAtDate: getUAEDateString(),
+          deletedAtTime: getUAETimeString(),
+          deletedTimestamp: Date.now(),
+        });
+      }
+
+      await this.saveRemarksHistoryList(updated);
+    } catch (hErr) {
+      console.warn('Failed to mark remark deleted in history:', hErr);
+    }
+
+    // 4. Record audit log
+    if (traineeId) {
+      try {
+        await auditService.logAction(
+          effectiveDeleter,
+          `Deleted Remark for Trainee ${traineeId}: "${remarkText || `ID #${remarkId}`}"`,
+          traineeId
+        );
+      } catch {
+        // non-blocking
       }
     }
 

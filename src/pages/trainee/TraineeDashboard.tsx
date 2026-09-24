@@ -32,6 +32,12 @@ export const TraineeDashboard: React.FC<TraineeDashboardProps> = ({ currentUser 
   const [remarks, setRemarks] = useState<Remark[]>([]);
   const [todayAttendance, setTodayAttendance] = useState<Attendance | null>(null);
   const [todaySignOut, setTodaySignOut] = useState<SignOut | null>(null);
+  const [allocations, setAllocations] = useState<Allocation[]>([]);
+  const [taskCounts, setTaskCounts] = useState<TaskCount[]>([]);
+
+  // Tab views inside modals
+  const [allocationTab, setAllocationTab] = useState<'form' | 'history'>('form');
+  const [taskTab, setTaskTab] = useState<'form' | 'history'>('form');
 
   // Modals
   const [isAttendanceModalOpen, setIsAttendanceModalOpen] = useState(false);
@@ -67,18 +73,22 @@ export const TraineeDashboard: React.FC<TraineeDashboardProps> = ({ currentUser 
   const loadData = async () => {
     if (!currentUser.traineeId) return;
 
-    const t = await traineeService.getTraineeById(currentUser.traineeId);
-    setTrainee(t);
-
-    const rList = await traineeService.getRemarks(currentUser.traineeId);
-    setRemarks(rList);
-
     const today = getUAEDateString();
-    const att = await attendanceService.getTraineeAttendanceForDate(currentUser.traineeId, today);
-    setTodayAttendance(att);
+    const [t, rList, att, sOut, aList, tcList] = await Promise.all([
+      traineeService.getTraineeById(currentUser.traineeId),
+      traineeService.getRemarks(currentUser.traineeId),
+      attendanceService.getTraineeAttendanceForDate(currentUser.traineeId, today),
+      taskService.getSignOut(currentUser.traineeId, today),
+      allocationService.getAllocations(currentUser.traineeId),
+      taskService.getTaskCounts(currentUser.traineeId),
+    ]);
 
-    const sOut = await taskService.getSignOut(currentUser.traineeId, today);
+    setTrainee(t);
+    setRemarks(rList);
+    setTodayAttendance(att);
     setTodaySignOut(sOut);
+    setAllocations(aList);
+    setTaskCounts(tcList);
   };
 
   useEffect(() => {
@@ -189,7 +199,6 @@ export const TraineeDashboard: React.FC<TraineeDashboardProps> = ({ currentUser 
 
     setLoading(false);
     if (res.success) {
-      setIsAllocationModalOpen(false);
       setAllocationError(null);
       setAllocationForm({
         location: '',
@@ -199,6 +208,10 @@ export const TraineeDashboard: React.FC<TraineeDashboardProps> = ({ currentUser 
         manager: '',
         engineer: '',
       });
+      // Immediately refresh trainee's allocations list
+      const updatedAllocations = await allocationService.getAllocations(trainee.traineeId);
+      setAllocations(updatedAllocations);
+      setAllocationTab('history');
       setNotification({ type: 'success', text: 'Workstation Allocation successfully submitted.' });
     } else {
       const errMsg = res.error || 'Failed to submit allocation.';
@@ -219,9 +232,12 @@ export const TraineeDashboard: React.FC<TraineeDashboardProps> = ({ currentUser 
     setLoading(false);
 
     if (res.success) {
-      setIsTaskModalOpen(false);
       setTaskError(null);
       setTaskCountInput('');
+      // Immediately refresh trainee's task counts list
+      const updatedTasks = await taskService.getTaskCounts(trainee.traineeId);
+      setTaskCounts(updatedTasks);
+      setTaskTab('history');
       setNotification({ type: 'success', text: `Task count (${res.taskCount?.taskCount}) submitted successfully.` });
     } else {
       const errMsg = res.error || 'Failed to submit task count.';
@@ -402,6 +418,7 @@ export const TraineeDashboard: React.FC<TraineeDashboardProps> = ({ currentUser 
           className="action-card"
           onClick={() => {
             setAllocationError(null);
+            setAllocationTab('form');
             setIsAllocationModalOpen(true);
           }}
         >
@@ -409,9 +426,20 @@ export const TraineeDashboard: React.FC<TraineeDashboardProps> = ({ currentUser 
             <Compass size={26} />
           </div>
           <div className="action-card-title">ALLOCATION</div>
-          <div style={{ marginTop: '0.35rem', fontSize: '0.78rem', color: '#64748B' }}>
-            Submit Hangar / Aircraft Station
-          </div>
+          {allocations.length > 0 ? (
+            <div style={{ marginTop: '0.35rem' }}>
+              <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#0A192F' }}>
+                {allocations[0].location}
+              </div>
+              <div style={{ fontSize: '0.72rem', color: '#64748B', marginTop: '2px' }}>
+                {formatMediumDate(allocations[0].date)} • Total: {allocations.length}
+              </div>
+            </div>
+          ) : (
+            <div style={{ marginTop: '0.35rem', fontSize: '0.78rem', color: '#64748B' }}>
+              Submit Hangar / Aircraft Station
+            </div>
+          )}
         </div>
 
         {/* CARD 3: TASK COUNT */}
@@ -419,6 +447,7 @@ export const TraineeDashboard: React.FC<TraineeDashboardProps> = ({ currentUser 
           className="action-card"
           onClick={() => {
             setTaskError(null);
+            setTaskTab('form');
             setIsTaskModalOpen(true);
           }}
         >
@@ -426,9 +455,20 @@ export const TraineeDashboard: React.FC<TraineeDashboardProps> = ({ currentUser 
             <CheckSquare size={26} />
           </div>
           <div className="action-card-title">TASK COUNT</div>
-          <div style={{ marginTop: '0.35rem', fontSize: '0.78rem', color: '#64748B' }}>
-            Enter Daily Maintenance Tasks
-          </div>
+          {taskCounts.length > 0 ? (
+            <div style={{ marginTop: '0.35rem' }}>
+              <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#0A192F' }}>
+                {taskCounts[0].taskCount} {taskCounts[0].taskCount === 1 ? 'Task' : 'Tasks'} Recorded
+              </div>
+              <div style={{ fontSize: '0.72rem', color: '#64748B', marginTop: '2px' }}>
+                {formatMediumDate(taskCounts[0].date)} • Total: {taskCounts.length}
+              </div>
+            </div>
+          ) : (
+            <div style={{ marginTop: '0.35rem', fontSize: '0.78rem', color: '#64748B' }}>
+              Enter Daily Maintenance Tasks
+            </div>
+          )}
         </div>
 
         {/* CARD 4: DAILY SIGN-OUT */}
@@ -514,16 +554,35 @@ export const TraineeDashboard: React.FC<TraineeDashboardProps> = ({ currentUser 
         </div>
       </Modal>
 
-      {/* Modal 2: Allocation Form */}
+      {/* Modal 2: Allocation Form & History */}
       <Modal
         isOpen={isAllocationModalOpen}
         onClose={() => {
           setIsAllocationModalOpen(false);
           setAllocationError(null);
         }}
-        title="Submit Workstation Allocation"
-        maxWidth="600px"
+        title="Workstation Allocation & History"
+        maxWidth="650px"
       >
+        <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.25rem', borderBottom: '1px solid #E2E8F0', paddingBottom: '0.75rem' }}>
+          <button
+            type="button"
+            onClick={() => setAllocationTab('form')}
+            className={`btn btn-sm ${allocationTab === 'form' ? 'btn-navy' : 'btn-outline'}`}
+            style={{ flex: 1, fontWeight: allocationTab === 'form' ? 700 : 500 }}
+          >
+            + New Allocation
+          </button>
+          <button
+            type="button"
+            onClick={() => setAllocationTab('history')}
+            className={`btn btn-sm ${allocationTab === 'history' ? 'btn-gold' : 'btn-outline'}`}
+            style={{ flex: 1, fontWeight: allocationTab === 'history' ? 700 : 500 }}
+          >
+            📋 Allocation History ({allocations.length})
+          </button>
+        </div>
+
         {allocationError && (
           <div style={{ marginBottom: '1.25rem' }}>
             <Notification
@@ -533,103 +592,177 @@ export const TraineeDashboard: React.FC<TraineeDashboardProps> = ({ currentUser 
             />
           </div>
         )}
-        <form onSubmit={handleAllocationSubmit}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem' }}>
-            <div className="form-group">
-              <label className="form-label">Location / Hangar *</label>
-              <input
-                type="text"
-                className="form-control"
-                placeholder="e.g. Hangar 3 / Line Bay A"
-                value={allocationForm.location}
-                onChange={(e) => setAllocationForm({ ...allocationForm, location: e.target.value })}
-                required
-              />
-            </div>
 
-            <div className="form-group">
-              <label className="form-label">Inside / Outside *</label>
-              <select
-                className="form-control"
-                value={allocationForm.insideOutside}
-                onChange={(e) => setAllocationForm({ ...allocationForm, insideOutside: e.target.value as any })}
-                required
-              >
-                <option value="Inside">Inside Hangar</option>
-                <option value="Outside">Outside Hangar / Apron</option>
-              </select>
-            </div>
-
-            <div className="form-group">
-              <label className="form-label">Aircraft Registration *</label>
-              <input
-                type="text"
-                className="form-control"
-                placeholder="e.g. A6-ETD"
-                value={allocationForm.aircraftRegistration}
-                onChange={(e) => setAllocationForm({ ...allocationForm, aircraftRegistration: e.target.value })}
-                required
-              />
-            </div>
-
-            <div className="form-group">
-              <label className="form-label">Aircraft Type *</label>
-              <input
-                type="text"
-                className="form-control"
-                placeholder="e.g. Boeing 787 / A350"
-                value={allocationForm.aircraftType}
-                onChange={(e) => setAllocationForm({ ...allocationForm, aircraftType: e.target.value })}
-                required
-              />
-            </div>
-
-            <div className="form-group">
-              <label className="form-label">Check Manager *</label>
-              <input
-                type="text"
-                className="form-control"
-                placeholder="Manager Name"
-                value={allocationForm.manager}
-                onChange={(e) => setAllocationForm({ ...allocationForm, manager: e.target.value })}
-                required
-              />
-            </div>
-
-            <div className="form-group">
-              <label className="form-label">Check Engineer *</label>
-              <input
-                type="text"
-                className="form-control"
-                placeholder="Engineer Name"
-                value={allocationForm.engineer}
-                onChange={(e) => setAllocationForm({ ...allocationForm, engineer: e.target.value })}
-                required
-              />
-            </div>
+        {allocationTab === 'history' ? (
+          <div>
+            {allocations.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '2.5rem 1rem', color: '#64748B', fontStyle: 'italic' }}>
+                No workstation allocations submitted yet.
+              </div>
+            ) : (
+              <div style={{ maxHeight: '380px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.75rem', paddingRight: '4px' }}>
+                {allocations.map((a) => (
+                  <div
+                    key={a.id}
+                    style={{
+                      background: '#F8FAFC',
+                      border: '1px solid #E2E8F0',
+                      borderRadius: '8px',
+                      padding: '0.85rem 1rem',
+                      borderLeft: '4px solid #C5A059',
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '0.35rem' }}>
+                      <div style={{ fontWeight: 700, color: '#0A192F', fontSize: '0.95rem' }}>
+                        {a.location}
+                      </div>
+                      <span
+                        style={{
+                          fontSize: '0.72rem',
+                          padding: '2px 8px',
+                          borderRadius: '999px',
+                          fontWeight: 600,
+                          backgroundColor: a.insideOutside === 'Inside' ? '#EFF6FF' : '#FEF3C7',
+                          color: a.insideOutside === 'Inside' ? '#1D4ED8' : '#B45309',
+                          border: a.insideOutside === 'Inside' ? '1px solid #BFDBFE' : '1px solid #FDE68A',
+                        }}
+                      >
+                        {a.insideOutside} Hangar
+                      </span>
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '0.35rem', fontSize: '0.8rem', color: '#475569', marginTop: '0.35rem' }}>
+                      <div><strong>A/C Reg:</strong> {a.aircraftRegistration || 'N/A'}</div>
+                      <div><strong>A/C Type:</strong> {a.aircraftType || 'N/A'}</div>
+                      <div><strong>Manager:</strong> {a.manager || 'N/A'}</div>
+                      <div><strong>Engineer:</strong> {a.engineer || 'N/A'}</div>
+                    </div>
+                    <div style={{ fontSize: '0.75rem', color: '#94A3B8', textAlign: 'right', marginTop: '0.4rem', borderTop: '1px dashed #E2E8F0', paddingTop: '0.35rem' }}>
+                      📅 {formatMediumDate(a.date)} • {a.time}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
+        ) : (
+          <form onSubmit={handleAllocationSubmit}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem' }}>
+              <div className="form-group">
+                <label className="form-label">Location / Hangar *</label>
+                <input
+                  type="text"
+                  className="form-control"
+                  placeholder="e.g. Hangar 3 / Line Bay A"
+                  value={allocationForm.location}
+                  onChange={(e) => setAllocationForm({ ...allocationForm, location: e.target.value })}
+                  required
+                />
+              </div>
 
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '1.25rem' }}>
-            <button type="button" className="btn btn-outline" onClick={() => setIsAllocationModalOpen(false)}>
-              Cancel
-            </button>
-            <button type="submit" className="btn btn-navy" disabled={loading}>
-              <Compass size={16} />
-              <span>{loading ? 'Submitting...' : 'Submit Allocation'}</span>
-            </button>
-          </div>
-        </form>
+              <div className="form-group">
+                <label className="form-label">Inside / Outside *</label>
+                <select
+                  className="form-control"
+                  value={allocationForm.insideOutside}
+                  onChange={(e) => setAllocationForm({ ...allocationForm, insideOutside: e.target.value as any })}
+                  required
+                >
+                  <option value="Inside">Inside Hangar</option>
+                  <option value="Outside">Outside Hangar / Apron</option>
+                </select>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Aircraft Registration *</label>
+                <input
+                  type="text"
+                  className="form-control"
+                  placeholder="e.g. A6-ETD"
+                  value={allocationForm.aircraftRegistration}
+                  onChange={(e) => setAllocationForm({ ...allocationForm, aircraftRegistration: e.target.value })}
+                  required
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Aircraft Type *</label>
+                <input
+                  type="text"
+                  className="form-control"
+                  placeholder="e.g. Boeing 787 / A350"
+                  value={allocationForm.aircraftType}
+                  onChange={(e) => setAllocationForm({ ...allocationForm, aircraftType: e.target.value })}
+                  required
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Check Manager *</label>
+                <input
+                  type="text"
+                  className="form-control"
+                  placeholder="Manager Name"
+                  value={allocationForm.manager}
+                  onChange={(e) => setAllocationForm({ ...allocationForm, manager: e.target.value })}
+                  required
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Check Engineer *</label>
+                <input
+                  type="text"
+                  className="form-control"
+                  placeholder="Engineer Name"
+                  value={allocationForm.engineer}
+                  onChange={(e) => setAllocationForm({ ...allocationForm, engineer: e.target.value })}
+                  required
+                />
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '1.25rem' }}>
+              <button type="button" className="btn btn-outline" onClick={() => setIsAllocationModalOpen(false)}>
+                Cancel
+              </button>
+              <button type="submit" className="btn btn-navy" disabled={loading}>
+                <Compass size={16} />
+                <span>{loading ? 'Submitting...' : 'Submit Allocation'}</span>
+              </button>
+            </div>
+          </form>
+        )}
       </Modal>
 
-      {/* Modal 3: Task Count Form */}
+      {/* Modal 3: Task Count Form & History */}
       <Modal
         isOpen={isTaskModalOpen}
         onClose={() => {
           setIsTaskModalOpen(false);
           setTaskError(null);
         }}
-        title="Enter Your Latest Task Count"
+        title="Task Count & History"
+        maxWidth="600px"
       >
+        <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.25rem', borderBottom: '1px solid #E2E8F0', paddingBottom: '0.75rem' }}>
+          <button
+            type="button"
+            onClick={() => setTaskTab('form')}
+            className={`btn btn-sm ${taskTab === 'form' ? 'btn-navy' : 'btn-outline'}`}
+            style={{ flex: 1, fontWeight: taskTab === 'form' ? 700 : 500 }}
+          >
+            + Submit Task Count
+          </button>
+          <button
+            type="button"
+            onClick={() => setTaskTab('history')}
+            className={`btn btn-sm ${taskTab === 'history' ? 'btn-gold' : 'btn-outline'}`}
+            style={{ flex: 1, fontWeight: taskTab === 'history' ? 700 : 500 }}
+          >
+            📊 Task History ({taskCounts.length})
+          </button>
+        </div>
+
         {taskError && (
           <div style={{ marginBottom: '1.25rem' }}>
             <Notification
@@ -639,30 +772,76 @@ export const TraineeDashboard: React.FC<TraineeDashboardProps> = ({ currentUser 
             />
           </div>
         )}
-        <form onSubmit={handleTaskSubmit}>
-          <div className="form-group">
-            <label className="form-label">Completed Task Count *</label>
-            <input
-              type="number"
-              min="0"
-              className="form-control"
-              placeholder="e.g. 5"
-              value={taskCountInput}
-              onChange={(e) => setTaskCountInput(e.target.value === '' ? '' : parseInt(e.target.value, 10))}
-              required
-            />
-          </div>
 
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '1.25rem' }}>
-            <button type="button" className="btn btn-outline" onClick={() => setIsTaskModalOpen(false)}>
-              Cancel
-            </button>
-            <button type="submit" className="btn btn-gold" disabled={loading || taskCountInput === ''}>
-              <CheckSquare size={16} />
-              <span>{loading ? 'Submitting...' : 'Submit Task Count'}</span>
-            </button>
+        {taskTab === 'history' ? (
+          <div>
+            {taskCounts.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '2.5rem 1rem', color: '#64748B', fontStyle: 'italic' }}>
+                No task count submissions recorded yet.
+              </div>
+            ) : (
+              <div style={{ maxHeight: '380px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.65rem', paddingRight: '4px' }}>
+                {taskCounts.map((t) => (
+                  <div
+                    key={t.id}
+                    style={{
+                      background: '#F8FAFC',
+                      border: '1px solid #E2E8F0',
+                      borderRadius: '8px',
+                      padding: '0.75rem 1rem',
+                      borderLeft: '4px solid #047857',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                    }}
+                  >
+                    <div>
+                      <div style={{ fontSize: '1.05rem', fontWeight: 800, color: '#047857' }}>
+                        {t.taskCount} {t.taskCount === 1 ? 'Task' : 'Tasks'}
+                      </div>
+                      <div style={{ fontSize: '0.75rem', color: '#64748B', marginTop: '0.15rem' }}>
+                        Maintenance Tasks Completed
+                      </div>
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <div style={{ fontSize: '0.8rem', fontWeight: 600, color: '#0A192F' }}>
+                        📅 {formatMediumDate(t.date)}
+                      </div>
+                      <div style={{ fontSize: '0.75rem', color: '#94A3B8' }}>
+                        {t.time}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
-        </form>
+        ) : (
+          <form onSubmit={handleTaskSubmit}>
+            <div className="form-group">
+              <label className="form-label">Completed Task Count *</label>
+              <input
+                type="number"
+                min="0"
+                className="form-control"
+                placeholder="e.g. 5"
+                value={taskCountInput}
+                onChange={(e) => setTaskCountInput(e.target.value === '' ? '' : parseInt(e.target.value, 10))}
+                required
+              />
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '1.25rem' }}>
+              <button type="button" className="btn btn-outline" onClick={() => setIsTaskModalOpen(false)}>
+                Cancel
+              </button>
+              <button type="submit" className="btn btn-gold" disabled={loading || taskCountInput === ''}>
+                <CheckSquare size={16} />
+                <span>{loading ? 'Submitting...' : 'Submit Task Count'}</span>
+              </button>
+            </div>
+          </form>
+        )}
       </Modal>
 
       {/* Modal 4: Daily Sign-Out Confirmation */}

@@ -1,5 +1,5 @@
 import { db } from '../../db';
-import { Trainee, Batch, Remark } from '../../types';
+import { Trainee, Batch, Remark, RemarkHistoryItem } from '../../types';
 import { hashPassword } from '../../utils/security';
 import { getUAEDateString, getUAETimeString } from '../../utils/timezone';
 import { ITraineeService } from '../api';
@@ -167,6 +167,14 @@ export class DexieTraineeService implements ITraineeService {
       .sortBy('timestamp');
   }
 
+  async getRemarksHistory(traineeId?: string): Promise<RemarkHistoryItem[]> {
+    const historySetting = await db.settings.where('key').equals('remarks_history').first();
+    const list: RemarkHistoryItem[] = historySetting?.value || [];
+    if (!traineeId) return list;
+    const norm = traineeId.trim().toUpperCase();
+    return list.filter((h) => h.traineeId.trim().toUpperCase() === norm);
+  }
+
   async addRemark(traineeId: string, remarkText: string, author: string): Promise<{ success: boolean; remark?: Remark; error?: string }> {
     try {
       const cleanRemark = remarkText.trim();
@@ -187,9 +195,33 @@ export class DexieTraineeService implements ITraineeService {
 
       const id = await db.remarks.add(newRemark);
 
+      // Save to Remarks History
+      try {
+        const historySetting = await db.settings.where('key').equals('remarks_history').first();
+        const historyList: RemarkHistoryItem[] = historySetting?.value || [];
+        const historyItem: RemarkHistoryItem = {
+          id,
+          traineeId,
+          remark: cleanRemark,
+          createdBy: author,
+          date,
+          time,
+          timestamp,
+          status: 'active',
+        };
+        historyList.unshift(historyItem);
+        if (historySetting && historySetting.id) {
+          await db.settings.update(historySetting.id, { value: historyList });
+        } else {
+          await db.settings.add({ key: 'remarks_history', value: historyList });
+        }
+      } catch (hErr) {
+        console.warn('Failed to update remarks_history in Dexie:', hErr);
+      }
+
       await db.auditLogs.add({
         user: author,
-        action: `Added Remark for Trainee ${traineeId}`,
+        action: `Added Remark for Trainee ${traineeId}: "${cleanRemark}"`,
         date,
         time,
         relatedTrainee: traineeId,
@@ -202,17 +234,18 @@ export class DexieTraineeService implements ITraineeService {
     }
   }
 
-  async deleteRemark(remarkId: number, traineeId?: string, remarkText?: string): Promise<{ success: boolean; error?: string }> {
+  async deleteRemark(remarkId: number, traineeId?: string, remarkText?: string, deleter?: string): Promise<{ success: boolean; error?: string }> {
     try {
       const remark = await db.remarks.get(remarkId);
       const targetTraineeId = traineeId || remark?.traineeId;
       const targetRemarkText = remarkText || remark?.remark;
+      const effectiveDeleter = deleter || 'MASTER';
 
       if (remarkId > 0) {
         await db.remarks.delete(remarkId);
       }
 
-      // If traineeId and remarkText are provided, delete any duplicate remarks in Dexie
+      // If traineeId and remarkText are provided, delete any duplicate remarks in Dexie active list
       if (targetTraineeId && targetRemarkText) {
         const cleanText = targetRemarkText.trim();
         await db.remarks
@@ -222,10 +255,65 @@ export class DexieTraineeService implements ITraineeService {
           .delete();
       }
 
+      // Update Remarks History to mark as deleted rather than destroying history
+      try {
+        const historySetting = await db.settings.where('key').equals('remarks_history').first();
+        if (historySetting && Array.isArray(historySetting.value)) {
+          const historyList: RemarkHistoryItem[] = historySetting.value;
+          let found = false;
+          const updated = historyList.map((h) => {
+            const matchesId = remarkId > 0 && h.id === remarkId;
+            const matchesText = targetTraineeId && targetRemarkText &&
+              h.traineeId.trim().toUpperCase() === targetTraineeId.trim().toUpperCase() &&
+              h.remark.trim() === targetRemarkText.trim() &&
+              h.status === 'active';
+
+            if (matchesId || matchesText) {
+              found = true;
+              return {
+                ...h,
+                status: 'deleted' as const,
+                deletedBy: effectiveDeleter,
+                deletedAtDate: getUAEDateString(),
+                deletedAtTime: getUAETimeString(),
+                deletedTimestamp: Date.now(),
+              };
+            }
+            return h;
+          });
+
+          // If not found in history yet (e.g. created previously), add it as a deleted history record
+          if (!found && targetTraineeId && targetRemarkText) {
+            updated.unshift({
+              id: remarkId || Date.now(),
+              traineeId: targetTraineeId,
+              remark: targetRemarkText.trim(),
+              createdBy: remark?.createdBy || 'Supervisor',
+              date: remark?.date || getUAEDateString(),
+              time: remark?.time || getUAETimeString(),
+              timestamp: remark?.timestamp || Date.now(),
+              status: 'deleted',
+              deletedBy: effectiveDeleter,
+              deletedAtDate: getUAEDateString(),
+              deletedAtTime: getUAETimeString(),
+              deletedTimestamp: Date.now(),
+            });
+          }
+
+          if (historySetting.id) {
+            await db.settings.update(historySetting.id, { value: updated });
+          } else {
+            await db.settings.put({ key: 'remarks_history', value: updated });
+          }
+        }
+      } catch (hErr) {
+        console.warn('Failed to mark remark deleted in Dexie history:', hErr);
+      }
+
       if (targetTraineeId) {
         await db.auditLogs.add({
-          user: 'selva.master',
-          action: `Deleted Remark #${remarkId} for Trainee ${targetTraineeId}`,
+          user: effectiveDeleter,
+          action: `Deleted Remark for Trainee ${targetTraineeId}: "${targetRemarkText || `ID #${remarkId}`}"`,
           date: getUAEDateString(),
           time: getUAETimeString(),
           relatedTrainee: targetTraineeId,

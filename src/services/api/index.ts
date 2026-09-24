@@ -3,6 +3,7 @@ import {
   Trainee,
   Batch,
   Remark,
+  RemarkHistoryItem,
   Attendance,
   Allocation,
   TaskCount,
@@ -39,8 +40,9 @@ export interface ITraineeService {
   deleteBatch(batchId: number): Promise<{ success: boolean; error?: string }>;
 
   getRemarks(traineeId: string): Promise<Remark[]>;
+  getRemarksHistory(traineeId?: string): Promise<RemarkHistoryItem[]>;
   addRemark(traineeId: string, remarkText: string, author: string): Promise<{ success: boolean; remark?: Remark; error?: string }>;
-  deleteRemark(remarkId: number, traineeId?: string, remarkText?: string): Promise<{ success: boolean; error?: string }>;
+  deleteRemark(remarkId: number, traineeId?: string, remarkText?: string, deleter?: string): Promise<{ success: boolean; error?: string }>;
   saveEnrollmentSelfie(traineeId: string, selfieBase64: string): Promise<{ success: boolean; error?: string }>;
 }
 

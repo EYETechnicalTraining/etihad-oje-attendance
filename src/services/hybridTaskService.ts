@@ -6,23 +6,31 @@ import { ITaskService } from './api';
 
 export class HybridTaskService implements ITaskService {
   async getTaskCounts(traineeId: string): Promise<TaskCount[]> {
-    if (!isSupabaseConfigured || !supabase) return await dexieTask.getTaskCounts(traineeId);
+    const normId = (traineeId || '').trim();
+    if (!isSupabaseConfigured || !supabase) return await dexieTask.getTaskCounts(normId);
 
-    const { data } = await supabase
-      .from('task_counts')
-      .select('*')
-      .eq('trainee_id', traineeId)
-      .order('timestamp', { ascending: false });
+    try {
+      const { data } = await supabase
+        .from('task_counts')
+        .select('*')
+        .ilike('trainee_id', normId)
+        .order('timestamp', { ascending: false });
 
-    if (!data) return [];
-    return data.map((t: any) => ({
-      id: t.id,
-      traineeId: t.trainee_id,
-      taskCount: t.task_count,
-      date: t.date,
-      time: t.time,
-      timestamp: Number(t.timestamp),
-    }));
+      if (data && data.length > 0) {
+        return data.map((t: any) => ({
+          id: t.id,
+          traineeId: t.trainee_id,
+          taskCount: t.task_count,
+          date: t.date,
+          time: t.time,
+          timestamp: Number(t.timestamp),
+        }));
+      }
+    } catch (err) {
+      console.warn('Failed to fetch task counts from Supabase, checking local:', err);
+    }
+
+    return await dexieTask.getTaskCounts(normId);
   }
 
   async getLatestTaskCount(traineeId: string): Promise<TaskCount | null> {
@@ -34,7 +42,8 @@ export class HybridTaskService implements ITaskService {
     traineeId: string,
     taskCount: number
   ): Promise<{ success: boolean; taskCount?: TaskCount; error?: string }> {
-    if (!isSupabaseConfigured || !supabase) return await dexieTask.addTaskCount(traineeId, taskCount);
+    const normId = (traineeId || '').trim();
+    if (!isSupabaseConfigured || !supabase) return await dexieTask.addTaskCount(normId, taskCount);
 
     try {
       const date = getUAEDateString();
@@ -42,7 +51,7 @@ export class HybridTaskService implements ITaskService {
       const timestamp = Date.now();
 
       const { data, error } = await supabase.from('task_counts').insert([{
-        trainee_id: traineeId,
+        trainee_id: normId,
         task_count: taskCount,
         date,
         time,
@@ -51,11 +60,18 @@ export class HybridTaskService implements ITaskService {
 
       if (error || !data) return { success: false, error: error?.message || 'Failed to submit task count.' };
 
+      // Sync into local Dexie cache
+      try {
+        await dexieTask.addTaskCount(normId, taskCount);
+      } catch {
+        // non-blocking
+      }
+
       return {
         success: true,
         taskCount: {
           id: data[0].id,
-          traineeId,
+          traineeId: normId,
           taskCount,
           date,
           time,
@@ -68,33 +84,42 @@ export class HybridTaskService implements ITaskService {
   }
 
   async getSignOut(traineeId: string, date: string): Promise<SignOut | null> {
-    if (!isSupabaseConfigured || !supabase) return await dexieTask.getSignOut(traineeId, date);
+    const normId = (traineeId || '').trim();
+    if (!isSupabaseConfigured || !supabase) return await dexieTask.getSignOut(normId, date);
 
-    const { data } = await supabase
-      .from('sign_outs')
-      .select('*')
-      .eq('trainee_id', traineeId)
-      .eq('date', date);
+    try {
+      const { data } = await supabase
+        .from('sign_outs')
+        .select('*')
+        .ilike('trainee_id', normId)
+        .eq('date', date);
 
-    if (!data || data.length === 0) return null;
-    const s = data[0];
-    return {
-      id: s.id,
-      traineeId: s.trainee_id,
-      date: s.date,
-      signOutTime: s.sign_out_time,
-      timestamp: Number(s.timestamp),
-    };
+      if (data && data.length > 0) {
+        const s = data[0];
+        return {
+          id: s.id,
+          traineeId: s.trainee_id,
+          date: s.date,
+          signOutTime: s.sign_out_time,
+          timestamp: Number(s.timestamp),
+        };
+      }
+    } catch (err) {
+      console.warn('Failed to fetch sign out from Supabase, checking local:', err);
+    }
+
+    return await dexieTask.getSignOut(normId, date);
   }
 
   async submitSignOut(
     traineeId: string
   ): Promise<{ success: boolean; signOut?: SignOut; error?: string }> {
-    if (!isSupabaseConfigured || !supabase) return await dexieTask.submitSignOut(traineeId);
+    const normId = (traineeId || '').trim();
+    if (!isSupabaseConfigured || !supabase) return await dexieTask.submitSignOut(normId);
 
     try {
       const today = getUAEDateString();
-      const existing = await this.getSignOut(traineeId, today);
+      const existing = await this.getSignOut(normId, today);
 
       if (existing) {
         return {
@@ -107,7 +132,7 @@ export class HybridTaskService implements ITaskService {
       const timestamp = Date.now();
 
       const { data, error } = await supabase.from('sign_outs').insert([{
-        trainee_id: traineeId,
+        trainee_id: normId,
         date: today,
         sign_out_time: signOutTime,
         timestamp,
@@ -115,11 +140,17 @@ export class HybridTaskService implements ITaskService {
 
       if (error || !data) return { success: false, error: error?.message || 'Failed to submit sign-out.' };
 
+      try {
+        await dexieTask.submitSignOut(normId);
+      } catch {
+        // non-blocking
+      }
+
       return {
         success: true,
         signOut: {
           id: data[0].id,
-          traineeId,
+          traineeId: normId,
           date: today,
           signOutTime,
           timestamp,
