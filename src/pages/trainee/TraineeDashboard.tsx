@@ -21,6 +21,7 @@ import {
   KeyRound,
   CheckCircle2,
   RefreshCw,
+  Trash2,
 } from 'lucide-react';
 
 interface TraineeDashboardProps {
@@ -243,6 +244,68 @@ export const TraineeDashboard: React.FC<TraineeDashboardProps> = ({ currentUser 
       const errMsg = res.error || 'Failed to submit task count.';
       setTaskError(errMsg);
       setNotification({ type: 'error', text: errMsg });
+    }
+  };
+
+  // Delete Allocation Entry (Instant 1-Click Delete with Optimistic UI)
+  const handleDeleteAllocation = async (allocationId?: number) => {
+    if (!allocationId || !trainee) return;
+    const prev = [...allocations];
+    setAllocations((list) => list.filter((a) => a.id !== allocationId));
+    setNotification({ type: 'success', text: 'Allocation record deleted.' });
+
+    const res = await allocationService.deleteAllocation(allocationId, trainee.traineeId);
+    if (!res.success) {
+      setAllocations(prev);
+      setNotification({ type: 'error', text: res.error || 'Failed to delete allocation.' });
+    }
+  };
+
+  // Delete Task Count Entry (Instant 1-Click Delete with Optimistic UI)
+  const handleDeleteTaskCount = async (taskCountId?: number) => {
+    if (!taskCountId || !trainee) return;
+    const prev = [...taskCounts];
+    setTaskCounts((list) => list.filter((t) => t.id !== taskCountId));
+    setNotification({ type: 'success', text: 'Task count record deleted.' });
+
+    const res = await taskService.deleteTaskCount(taskCountId, trainee.traineeId);
+    if (!res.success) {
+      setTaskCounts(prev);
+      setNotification({ type: 'error', text: res.error || 'Failed to delete task count.' });
+    }
+  };
+
+  // Clear All Allocation History
+  const handleClearAllAllocations = async () => {
+    if (!trainee || allocations.length === 0) return;
+    if (!window.confirm('Are you sure you want to clear your entire workstation allocation history?')) return;
+    const prev = [...allocations];
+    setAllocations([]);
+    setNotification({ type: 'success', text: 'All workstation allocation history cleared.' });
+
+    if (allocationService.clearAllocationHistory) {
+      const res = await allocationService.clearAllocationHistory(trainee.traineeId);
+      if (!res.success) {
+        setAllocations(prev);
+        setNotification({ type: 'error', text: res.error || 'Failed to clear allocation history.' });
+      }
+    }
+  };
+
+  // Clear All Task History
+  const handleClearAllTasks = async () => {
+    if (!trainee || taskCounts.length === 0) return;
+    if (!window.confirm('Are you sure you want to clear your entire task count history?')) return;
+    const prev = [...taskCounts];
+    setTaskCounts([]);
+    setNotification({ type: 'success', text: 'All task count history cleared.' });
+
+    if (taskService.clearTaskHistory) {
+      const res = await taskService.clearTaskHistory(trainee.traineeId);
+      if (!res.success) {
+        setTaskCounts(prev);
+        setNotification({ type: 'error', text: res.error || 'Failed to clear task history.' });
+      }
     }
   };
 
@@ -600,47 +663,89 @@ export const TraineeDashboard: React.FC<TraineeDashboardProps> = ({ currentUser 
                 No workstation allocations submitted yet.
               </div>
             ) : (
-              <div style={{ maxHeight: '380px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.75rem', paddingRight: '4px' }}>
-                {allocations.map((a) => (
-                  <div
-                    key={a.id}
-                    style={{
-                      background: '#F8FAFC',
-                      border: '1px solid #E2E8F0',
-                      borderRadius: '8px',
-                      padding: '0.85rem 1rem',
-                      borderLeft: '4px solid #C5A059',
-                    }}
-                  >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '0.35rem' }}>
-                      <div style={{ fontWeight: 700, color: '#0A192F', fontSize: '0.95rem' }}>
-                        {a.location}
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem', padding: '0 2px' }}>
+                  <span style={{ fontSize: '0.8rem', color: '#64748B', fontWeight: 600 }}>
+                    {allocations.length} {allocations.length === 1 ? 'record' : 'records'} logged
+                  </span>
+                  {allocations.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={handleClearAllAllocations}
+                      className="btn btn-outline btn-sm"
+                      style={{ color: '#DC2626', borderColor: '#FCA5A5', fontSize: '0.72rem', padding: '2px 8px' }}
+                    >
+                      <Trash2 size={12} />
+                      <span>Clear All</span>
+                    </button>
+                  )}
+                </div>
+
+                <div style={{ maxHeight: '380px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.75rem', paddingRight: '4px' }}>
+                  {allocations.map((a) => (
+                    <div
+                      key={a.id}
+                      style={{
+                        background: '#F8FAFC',
+                        border: '1px solid #E2E8F0',
+                        borderRadius: '8px',
+                        padding: '0.85rem 1rem',
+                        borderLeft: '4px solid #C5A059',
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '0.35rem' }}>
+                        <div style={{ fontWeight: 700, color: '#0A192F', fontSize: '0.95rem' }}>
+                          {a.location}
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                          <span
+                            style={{
+                              fontSize: '0.72rem',
+                              padding: '2px 8px',
+                              borderRadius: '999px',
+                              fontWeight: 600,
+                              backgroundColor: a.insideOutside === 'Inside' ? '#EFF6FF' : '#FEF3C7',
+                              color: a.insideOutside === 'Inside' ? '#1D4ED8' : '#B45309',
+                              border: a.insideOutside === 'Inside' ? '1px solid #BFDBFE' : '1px solid #FDE68A',
+                            }}
+                          >
+                            {a.insideOutside} Hangar
+                          </span>
+                          {a.id && (
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteAllocation(a.id)}
+                              className="btn btn-outline btn-sm"
+                              style={{
+                                color: '#DC2626',
+                                borderColor: '#FCA5A5',
+                                backgroundColor: '#FEF2F2',
+                                padding: '2px 7px',
+                                fontSize: '0.72rem',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '3px',
+                              }}
+                              title="Delete this allocation entry"
+                            >
+                              <Trash2 size={12} />
+                              <span>Delete</span>
+                            </button>
+                          )}
+                        </div>
                       </div>
-                      <span
-                        style={{
-                          fontSize: '0.72rem',
-                          padding: '2px 8px',
-                          borderRadius: '999px',
-                          fontWeight: 600,
-                          backgroundColor: a.insideOutside === 'Inside' ? '#EFF6FF' : '#FEF3C7',
-                          color: a.insideOutside === 'Inside' ? '#1D4ED8' : '#B45309',
-                          border: a.insideOutside === 'Inside' ? '1px solid #BFDBFE' : '1px solid #FDE68A',
-                        }}
-                      >
-                        {a.insideOutside} Hangar
-                      </span>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '0.35rem', fontSize: '0.8rem', color: '#475569', marginTop: '0.35rem' }}>
+                        <div><strong>A/C Reg:</strong> {a.aircraftRegistration || 'N/A'}</div>
+                        <div><strong>A/C Type:</strong> {a.aircraftType || 'N/A'}</div>
+                        <div><strong>Manager:</strong> {a.manager || 'N/A'}</div>
+                        <div><strong>Engineer:</strong> {a.engineer || 'N/A'}</div>
+                      </div>
+                      <div style={{ fontSize: '0.75rem', color: '#94A3B8', textAlign: 'right', marginTop: '0.4rem', borderTop: '1px dashed #E2E8F0', paddingTop: '0.35rem' }}>
+                        📅 {formatMediumDate(a.date)} • {a.time}
+                      </div>
                     </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '0.35rem', fontSize: '0.8rem', color: '#475569', marginTop: '0.35rem' }}>
-                      <div><strong>A/C Reg:</strong> {a.aircraftRegistration || 'N/A'}</div>
-                      <div><strong>A/C Type:</strong> {a.aircraftType || 'N/A'}</div>
-                      <div><strong>Manager:</strong> {a.manager || 'N/A'}</div>
-                      <div><strong>Engineer:</strong> {a.engineer || 'N/A'}</div>
-                    </div>
-                    <div style={{ fontSize: '0.75rem', color: '#94A3B8', textAlign: 'right', marginTop: '0.4rem', borderTop: '1px dashed #E2E8F0', paddingTop: '0.35rem' }}>
-                      📅 {formatMediumDate(a.date)} • {a.time}
-                    </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
             )}
           </div>
@@ -780,39 +885,82 @@ export const TraineeDashboard: React.FC<TraineeDashboardProps> = ({ currentUser 
                 No task count submissions recorded yet.
               </div>
             ) : (
-              <div style={{ maxHeight: '380px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.65rem', paddingRight: '4px' }}>
-                {taskCounts.map((t) => (
-                  <div
-                    key={t.id}
-                    style={{
-                      background: '#F8FAFC',
-                      border: '1px solid #E2E8F0',
-                      borderRadius: '8px',
-                      padding: '0.75rem 1rem',
-                      borderLeft: '4px solid #047857',
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                    }}
-                  >
-                    <div>
-                      <div style={{ fontSize: '1.05rem', fontWeight: 800, color: '#047857' }}>
-                        {t.taskCount} {t.taskCount === 1 ? 'Task' : 'Tasks'}
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem', padding: '0 2px' }}>
+                  <span style={{ fontSize: '0.8rem', color: '#64748B', fontWeight: 600 }}>
+                    {taskCounts.length} {taskCounts.length === 1 ? 'submission' : 'submissions'} logged
+                  </span>
+                  {taskCounts.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={handleClearAllTasks}
+                      className="btn btn-outline btn-sm"
+                      style={{ color: '#DC2626', borderColor: '#FCA5A5', fontSize: '0.72rem', padding: '2px 8px' }}
+                    >
+                      <Trash2 size={12} />
+                      <span>Clear All</span>
+                    </button>
+                  )}
+                </div>
+
+                <div style={{ maxHeight: '380px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.65rem', paddingRight: '4px' }}>
+                  {taskCounts.map((t) => (
+                    <div
+                      key={t.id}
+                      style={{
+                        background: '#F8FAFC',
+                        border: '1px solid #E2E8F0',
+                        borderRadius: '8px',
+                        padding: '0.75rem 1rem',
+                        borderLeft: '4px solid #047857',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        gap: '0.75rem',
+                      }}
+                    >
+                      <div>
+                        <div style={{ fontSize: '1.05rem', fontWeight: 800, color: '#047857' }}>
+                          {t.taskCount} {t.taskCount === 1 ? 'Task' : 'Tasks'}
+                        </div>
+                        <div style={{ fontSize: '0.75rem', color: '#64748B', marginTop: '0.15rem' }}>
+                          Maintenance Tasks Completed
+                        </div>
                       </div>
-                      <div style={{ fontSize: '0.75rem', color: '#64748B', marginTop: '0.15rem' }}>
-                        Maintenance Tasks Completed
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                        <div style={{ textAlign: 'right' }}>
+                          <div style={{ fontSize: '0.8rem', fontWeight: 600, color: '#0A192F' }}>
+                            📅 {formatMediumDate(t.date)}
+                          </div>
+                          <div style={{ fontSize: '0.75rem', color: '#94A3B8' }}>
+                            {t.time}
+                          </div>
+                        </div>
+                        {t.id && (
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteTaskCount(t.id)}
+                            className="btn btn-outline btn-sm"
+                            style={{
+                              color: '#DC2626',
+                              borderColor: '#FCA5A5',
+                              backgroundColor: '#FEF2F2',
+                              padding: '3px 8px',
+                              fontSize: '0.72rem',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '3px',
+                            }}
+                            title="Delete this task count entry"
+                          >
+                            <Trash2 size={12} />
+                            <span>Delete</span>
+                          </button>
+                        )}
                       </div>
                     </div>
-                    <div style={{ textAlign: 'right' }}>
-                      <div style={{ fontSize: '0.8rem', fontWeight: 600, color: '#0A192F' }}>
-                        📅 {formatMediumDate(t.date)}
-                      </div>
-                      <div style={{ fontSize: '0.75rem', color: '#94A3B8' }}>
-                        {t.time}
-                      </div>
-                    </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
             )}
           </div>

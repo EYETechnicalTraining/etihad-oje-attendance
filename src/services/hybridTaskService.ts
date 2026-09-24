@@ -3,6 +3,7 @@ import { supabase, isSupabaseConfigured } from './supabase/client';
 import { TaskCount, SignOut } from '../types';
 import { getUAEDateString, getUAETimeString } from '../utils/timezone';
 import { ITaskService } from './api';
+import { auditService } from './hybridAuditService';
 
 export class HybridTaskService implements ITaskService {
   async getTaskCounts(traineeId: string): Promise<TaskCount[]> {
@@ -158,6 +159,68 @@ export class HybridTaskService implements ITaskService {
       };
     } catch (err: any) {
       return { success: false, error: err.message || 'Failed to submit sign-out' };
+    }
+  }
+
+  async deleteTaskCount(taskCountId: number, traineeId?: string): Promise<{ success: boolean; error?: string }> {
+    const normId = (traineeId || '').trim();
+
+    // 1. Delete in Dexie cache
+    try {
+      await dexieTask.deleteTaskCount(taskCountId, normId);
+    } catch {
+      // non-blocking
+    }
+
+    if (!isSupabaseConfigured || !supabase) return { success: true };
+
+    try {
+      const { error } = await supabase
+        .from('task_counts')
+        .delete()
+        .eq('id', taskCountId);
+
+      if (error) {
+        console.warn('Failed to delete task count from Supabase:', error);
+        return { success: false, error: error.message };
+      }
+
+      if (normId) {
+        auditService.logAction(normId, `Deleted Task Count Record #${taskCountId}`, normId).catch(() => {});
+      }
+
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Failed to delete task count' };
+    }
+  }
+
+  async clearTaskHistory(traineeId: string): Promise<{ success: boolean; error?: string }> {
+    const normId = (traineeId || '').trim();
+
+    // Clear Dexie
+    try {
+      await dexieTask.clearTaskHistory(normId);
+    } catch {
+      // non-blocking
+    }
+
+    if (!isSupabaseConfigured || !supabase) return { success: true };
+
+    try {
+      const { error } = await supabase
+        .from('task_counts')
+        .delete()
+        .ilike('trainee_id', normId);
+
+      if (error) {
+        return { success: false, error: error.message };
+      }
+
+      auditService.logAction(normId, `Cleared All Task Count History`, normId).catch(() => {});
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Failed to clear task history' };
     }
   }
 }

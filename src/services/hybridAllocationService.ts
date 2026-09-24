@@ -3,6 +3,7 @@ import { supabase, isSupabaseConfigured } from './supabase/client';
 import { Allocation } from '../types';
 import { getUAEDateString, getUAETimeString } from '../utils/timezone';
 import { IAllocationService } from './api';
+import { auditService } from './hybridAuditService';
 
 export class HybridAllocationService implements IAllocationService {
   async getAllocations(traineeId: string): Promise<Allocation[]> {
@@ -85,6 +86,68 @@ export class HybridAllocationService implements IAllocationService {
       };
     } catch (err: any) {
       return { success: false, error: err.message || 'Failed to submit allocation' };
+    }
+  }
+
+  async deleteAllocation(allocationId: number, traineeId?: string): Promise<{ success: boolean; error?: string }> {
+    const normId = (traineeId || '').trim();
+
+    // 1. Delete in Dexie cache
+    try {
+      await dexieAllocation.deleteAllocation(allocationId, normId);
+    } catch {
+      // non-blocking
+    }
+
+    if (!isSupabaseConfigured || !supabase) return { success: true };
+
+    try {
+      const { error } = await supabase
+        .from('allocations')
+        .delete()
+        .eq('id', allocationId);
+
+      if (error) {
+        console.warn('Failed to delete allocation from Supabase:', error);
+        return { success: false, error: error.message };
+      }
+
+      if (normId) {
+        auditService.logAction(normId, `Deleted Workstation Allocation Record #${allocationId}`, normId).catch(() => {});
+      }
+
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Failed to delete allocation' };
+    }
+  }
+
+  async clearAllocationHistory(traineeId: string): Promise<{ success: boolean; error?: string }> {
+    const normId = (traineeId || '').trim();
+
+    // Clear Dexie
+    try {
+      await dexieAllocation.clearAllocationHistory(normId);
+    } catch {
+      // non-blocking
+    }
+
+    if (!isSupabaseConfigured || !supabase) return { success: true };
+
+    try {
+      const { error } = await supabase
+        .from('allocations')
+        .delete()
+        .ilike('trainee_id', normId);
+
+      if (error) {
+        return { success: false, error: error.message };
+      }
+
+      auditService.logAction(normId, `Cleared All Workstation Allocation History`, normId).catch(() => {});
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Failed to clear allocation history' };
     }
   }
 }

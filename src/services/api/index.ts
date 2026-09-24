@@ -63,12 +63,16 @@ export interface IAttendanceService {
 export interface IAllocationService {
   getAllocations(traineeId: string): Promise<Allocation[]>;
   addAllocation(allocationData: Omit<Allocation, 'id' | 'date' | 'time' | 'timestamp'>): Promise<{ success: boolean; allocation?: Allocation; error?: string }>;
+  deleteAllocation(allocationId: number, traineeId?: string): Promise<{ success: boolean; error?: string }>;
+  clearAllocationHistory?(traineeId: string): Promise<{ success: boolean; error?: string }>;
 }
 
 export interface ITaskService {
   getTaskCounts(traineeId: string): Promise<TaskCount[]>;
   getLatestTaskCount(traineeId: string): Promise<TaskCount | null>;
   addTaskCount(traineeId: string, count: number): Promise<{ success: boolean; taskCount?: TaskCount; error?: string }>;
+  deleteTaskCount(taskCountId: number, traineeId?: string): Promise<{ success: boolean; error?: string }>;
+  clearTaskHistory?(traineeId: string): Promise<{ success: boolean; error?: string }>;
   
   getSignOut(traineeId: string, date: string): Promise<SignOut | null>;
   submitSignOut(traineeId: string): Promise<{ success: boolean; signOut?: SignOut; error?: string }>;

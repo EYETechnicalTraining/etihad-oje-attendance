@@ -44,6 +44,45 @@ export class DexieAllocationService implements IAllocationService {
       return { success: false, error: err.message || 'Failed to submit allocation' };
     }
   }
+
+  async deleteAllocation(allocationId: number, traineeId?: string): Promise<{ success: boolean; error?: string }> {
+    try {
+      if (allocationId > 0) {
+        await db.allocations.delete(allocationId);
+      }
+      if (traineeId) {
+        await db.auditLogs.add({
+          user: traineeId,
+          action: `Deleted Workstation Allocation Record #${allocationId}`,
+          date: getUAEDateString(),
+          time: getUAETimeString(),
+          relatedTrainee: traineeId,
+          timestamp: Date.now(),
+        });
+      }
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Failed to delete allocation' };
+    }
+  }
+
+  async clearAllocationHistory(traineeId: string): Promise<{ success: boolean; error?: string }> {
+    try {
+      const normId = (traineeId || '').trim();
+      await db.allocations.where('traineeId').equals(normId).delete();
+      await db.auditLogs.add({
+        user: normId,
+        action: `Cleared All Workstation Allocation History`,
+        date: getUAEDateString(),
+        time: getUAETimeString(),
+        relatedTrainee: normId,
+        timestamp: Date.now(),
+      });
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Failed to clear allocation history' };
+    }
+  }
 }
 
 export const allocationService = new DexieAllocationService();

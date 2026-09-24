@@ -105,6 +105,45 @@ export class DexieTaskService implements ITaskService {
       return { success: false, error: err.message || 'Failed to submit sign-out' };
     }
   }
+
+  async deleteTaskCount(taskCountId: number, traineeId?: string): Promise<{ success: boolean; error?: string }> {
+    try {
+      if (taskCountId > 0) {
+        await db.taskCounts.delete(taskCountId);
+      }
+      if (traineeId) {
+        await db.auditLogs.add({
+          user: traineeId,
+          action: `Deleted Task Count Record #${taskCountId}`,
+          date: getUAEDateString(),
+          time: getUAETimeString(),
+          relatedTrainee: traineeId,
+          timestamp: Date.now(),
+        });
+      }
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Failed to delete task count' };
+    }
+  }
+
+  async clearTaskHistory(traineeId: string): Promise<{ success: boolean; error?: string }> {
+    try {
+      const normId = (traineeId || '').trim();
+      await db.taskCounts.where('traineeId').equals(normId).delete();
+      await db.auditLogs.add({
+        user: normId,
+        action: `Cleared All Task Count History`,
+        date: getUAEDateString(),
+        time: getUAETimeString(),
+        relatedTrainee: normId,
+        timestamp: Date.now(),
+      });
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Failed to clear task history' };
+    }
+  }
 }
 
 export const taskService = new DexieTaskService();
