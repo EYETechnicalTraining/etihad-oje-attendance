@@ -62,37 +62,55 @@ export const AuditBackupTab: React.FC<AuditBackupTabProps> = ({ currentUser, ref
   const [selectedBatch, setSelectedBatch] = useState<string>('All');
   const [exportingExcel, setExportingExcel] = useState(false);
 
-  const loadData = async () => {
-    const list = await auditService.getAuditLogs();
-    const bList = await traineeService.getBatches();
+  const loadInitialSettings = async () => {
     const geo = await settingsService.getGeofenceSettings();
     const em = await emailService.getEmailSettings();
-    setLogs(list);
-    setBatches(bList);
+    const bList = await traineeService.getBatches();
     setGeofence(geo);
     setEmailConfig(em);
+    setBatches(bList);
+  };
+
+  const refreshAuditLogs = async () => {
+    const list = await auditService.getAuditLogs();
+    setLogs(list);
   };
 
   useEffect(() => {
-    loadData();
+    loadInitialSettings();
+    refreshAuditLogs();
+
+    // ONLY refresh audit logs in background, NEVER overwrite user form inputs!
     const interval = setInterval(() => {
-      loadData();
-    }, 5000); // 5-second seamless auto-refresh
+      refreshAuditLogs();
+    }, 5000);
+
     return () => clearInterval(interval);
-  }, [refreshTrigger]);
+  }, []);
 
   const handleSaveGeofence = async (e: React.FormEvent) => {
     e.preventDefault();
     setSavingGeofence(true);
     setNotification(null);
 
-    const res = await settingsService.saveGeofenceSettings(geofence);
+    const loginRadius = Number(geofence.loginRadiusMeters) || 200;
+    const signOutRadius = Number(geofence.signOutRadiusMeters) || 500;
+    const cleanGeo: GeofenceSettings = {
+      ...geofence,
+      loginRadiusMeters: loginRadius,
+      signOutRadiusMeters: signOutRadius,
+      centerLatitude: Number(geofence.centerLatitude) || 24.4267,
+      centerLongitude: Number(geofence.centerLongitude) || 54.6511,
+    };
+
+    const res = await settingsService.saveGeofenceSettings(cleanGeo);
     setSavingGeofence(false);
 
     if (res.success) {
+      setGeofence(cleanGeo);
       setNotification({
         type: 'success',
-        text: `Geofence settings updated! Log In Radius: ${geofence.loginRadiusMeters}m • Sign Out Radius: ${geofence.signOutRadiusMeters}m.`,
+        text: `Geofence settings updated! Log In Radius: ${cleanGeo.loginRadiusMeters}m • Sign Out Radius: ${cleanGeo.signOutRadiusMeters}m.`,
       });
     } else {
       setNotification({
@@ -203,7 +221,7 @@ export const AuditBackupTab: React.FC<AuditBackupTabProps> = ({ currentUser, ref
         type: 'success',
         text: "Today's email duplicate dispatch lock has been reset! You can now freely test and re-trigger emails.",
       });
-      loadData();
+      refreshAuditLogs();
     } else {
       setNotification({ type: 'error', text: res.error || 'Failed to reset email lock.' });
     }
@@ -244,7 +262,8 @@ export const AuditBackupTab: React.FC<AuditBackupTabProps> = ({ currentUser, ref
 
         if (res.success) {
           setNotification({ type: 'success', text: 'Database successfully imported from backup file.' });
-          loadData();
+          loadInitialSettings();
+          refreshAuditLogs();
           setTimeout(() => window.location.reload(), 1500);
         } else {
           setNotification({ type: 'error', text: res.error || 'Import failed.' });
@@ -537,8 +556,14 @@ export const AuditBackupTab: React.FC<AuditBackupTabProps> = ({ currentUser, ref
                 type="number"
                 step="any"
                 className="form-control"
-                value={geofence.centerLatitude}
-                onChange={(e) => setGeofence({ ...geofence, centerLatitude: parseFloat(e.target.value) || 0 })}
+                value={geofence.centerLatitude ?? ''}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setGeofence((prev) => ({
+                    ...prev,
+                    centerLatitude: val === '' ? ('' as any) : parseFloat(val) || 0,
+                  }));
+                }}
                 required
               />
             </div>
@@ -549,8 +574,14 @@ export const AuditBackupTab: React.FC<AuditBackupTabProps> = ({ currentUser, ref
                 type="number"
                 step="any"
                 className="form-control"
-                value={geofence.centerLongitude}
-                onChange={(e) => setGeofence({ ...geofence, centerLongitude: parseFloat(e.target.value) || 0 })}
+                value={geofence.centerLongitude ?? ''}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setGeofence((prev) => ({
+                    ...prev,
+                    centerLongitude: val === '' ? ('' as any) : parseFloat(val) || 0,
+                  }));
+                }}
                 required
               />
             </div>
@@ -562,11 +593,17 @@ export const AuditBackupTab: React.FC<AuditBackupTabProps> = ({ currentUser, ref
                 min="1"
                 max="50000"
                 className="form-control"
-                value={geofence.loginRadiusMeters}
-                onChange={(e) => setGeofence({ ...geofence, loginRadiusMeters: parseInt(e.target.value) || 50 })}
+                value={geofence.loginRadiusMeters ?? ''}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setGeofence((prev) => ({
+                    ...prev,
+                    loginRadiusMeters: val === '' ? ('' as any) : parseInt(val, 10) || 0,
+                  }));
+                }}
                 required
               />
-              <span style={{ fontSize: '0.75rem', color: '#64748B' }}>e.g. 50 = 50 meters radius</span>
+              <span style={{ fontSize: '0.75rem', color: '#64748B' }}>e.g. 200 = 200 meters radius</span>
             </div>
 
             <div className="form-group">
@@ -576,8 +613,14 @@ export const AuditBackupTab: React.FC<AuditBackupTabProps> = ({ currentUser, ref
                 min="1"
                 max="50000"
                 className="form-control"
-                value={geofence.signOutRadiusMeters}
-                onChange={(e) => setGeofence({ ...geofence, signOutRadiusMeters: parseInt(e.target.value) || 500 })}
+                value={geofence.signOutRadiusMeters ?? ''}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setGeofence((prev) => ({
+                    ...prev,
+                    signOutRadiusMeters: val === '' ? ('' as any) : parseInt(val, 10) || 0,
+                  }));
+                }}
                 required
               />
               <span style={{ fontSize: '0.75rem', color: '#64748B' }}>e.g. 500 = 500 meters radius</span>

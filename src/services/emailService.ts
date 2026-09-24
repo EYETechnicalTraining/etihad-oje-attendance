@@ -1,8 +1,9 @@
 import { db } from '../db';
 import { supabase, isSupabaseConfigured } from './supabase/client';
-import { TraineeLogSummary } from '../types';
+import { TraineeLogSummary, AttendanceStatus } from '../types';
 import { isPastCutoffTime, isWeekend, getUAEDateString, formatDisplayDate, getUAETimeString } from '../utils/timezone';
 import { holidayService } from './hybridHolidayService';
+import { attendanceService } from './hybridAttendanceService';
 
 export interface EmailSettings {
   autoEmailEnabled: boolean;
@@ -298,6 +299,72 @@ export class EmailService {
       return { success: true };
     }
 
+    // CRITICAL LIVE SAFETY CHECK: Verify trainee status from the database before sending No Show email!
+    // A trainee who is Present, Late to Work, or on an approved leave must NEVER receive a No Show email.
+    try {
+      let currentStatus: AttendanceStatus | null = null;
+      let effectiveTraineeId = traineeId;
+
+      if (!effectiveTraineeId && toEmail) {
+        if (isSupabaseConfigured && supabase) {
+          const { data: traineeRec } = await supabase
+            .from('trainees')
+            .select('trainee_id')
+            .ilike('email', toEmail.trim())
+            .maybeSingle();
+          if (traineeRec?.trainee_id) {
+            effectiveTraineeId = traineeRec.trainee_id;
+          }
+        }
+        if (!effectiveTraineeId) {
+          const localTrainee = await db.trainees.where('email').equalsIgnoreCase(toEmail.trim()).first();
+          if (localTrainee?.traineeId) {
+            effectiveTraineeId = localTrainee.traineeId;
+          }
+        }
+      }
+
+      if (effectiveTraineeId) {
+        const normId = effectiveTraineeId.trim();
+        if (isSupabaseConfigured && supabase) {
+          const { data: att } = await supabase
+            .from('attendance')
+            .select('status')
+            .ilike('trainee_id', normId)
+            .eq('date', dateStr)
+            .maybeSingle();
+          if (att?.status) {
+            currentStatus = att.status as AttendanceStatus;
+          }
+        }
+        if (!currentStatus) {
+          const localAtt = await db.attendance
+            .where('[traineeId+date]')
+            .equals([normId, dateStr])
+            .first();
+          if (localAtt?.status) {
+            currentStatus = localAtt.status as AttendanceStatus;
+          }
+        }
+      }
+
+      if (
+        currentStatus &&
+        currentStatus !== 'No Show' &&
+        currentStatus !== 'N/A'
+      ) {
+        console.warn(
+          `[SAFETY BLOCK] Blocked No Show email to ${toName} (${effectiveTraineeId || toEmail}). Live attendance status is "${currentStatus}".`
+        );
+        return {
+          success: false,
+          error: `Safety block: Trainee ${toName} is already recorded as "${currentStatus}" for ${dateStr}. No Show email blocked.`,
+        };
+      }
+    } catch (checkErr) {
+      console.warn('Error during pre-send attendance validation:', checkErr);
+    }
+
     const htmlContent = generateAttendanceEmailHtml({
       toName,
       dateStr,
@@ -451,7 +518,7 @@ export class EmailService {
    */
   async triggerAutomatedNoShowEmails(
     targetDate: string,
-    logs: TraineeLogSummary[]
+    logs?: TraineeLogSummary[]
   ): Promise<{ dispatchedCount: number; errors: string[] }> {
     if (this.isTriggeringNoShow) return { dispatchedCount: 0, errors: [] };
 
@@ -474,13 +541,15 @@ export class EmailService {
       settings.lastNoShowNotificationDate = targetDate;
       await this.saveEmailSettings(settings);
 
-      const noShowTrainees = logs.filter((l) => l.status === 'No Show' && l.username);
+      // Always fetch fresh logs from the database to guarantee 100% up-to-date attendance records
+      const liveLogs = await attendanceService.getTraineeLogsForDate(targetDate);
+      const noShowTrainees = liveLogs.filter((l) => l.status === 'No Show' && l.username);
 
       for (const trainee of noShowTrainees) {
         const res = await this.sendNoShowEmail(trainee.name, trainee.username, targetDate, trainee.traineeId, settings);
         if (res.success) {
           count++;
-        } else if (res.error && !res.error.includes('blocked')) {
+        } else if (res.error && !res.error.includes('blocked') && !res.error.includes('Safety block')) {
           errors.push(`${trainee.name} (${trainee.username}): ${res.error}`);
         }
       }

@@ -12,6 +12,7 @@ import {
   getPreviousDateString,
   getNextDateString,
   isWeekend,
+  isPastCutoffTime,
 } from '../../utils/timezone';
 import { Badge } from '../../components/common/Badge';
 import { Modal } from '../../components/common/Modal';
@@ -51,43 +52,41 @@ export const TraineeLogsTab: React.FC<TraineeLogsTabProps> = ({ refreshTrigger }
     { open: false, log: null }
   );
 
-  const hasTriggeredDailyAutoNoShow = React.useRef(false);
-
-  const loadLogs = async (dateStr: string, isDailyAutoTrigger = false) => {
+  const loadLogs = async (dateStr: string) => {
     const data = await attendanceService.getTraineeLogsForDate(dateStr);
     setLogs(data);
 
-    // Preserve any active or unsaved status dropdown choices by the user
+    // Preserve ONLY dirty, unsaved status dropdown choices made by the user
     setStatusEdits((prev) => {
-      const merged: Record<string, AttendanceStatus> = {};
-      data.forEach((l) => {
-        merged[l.traineeId] = prev[l.traineeId] !== undefined ? prev[l.traineeId] : l.status;
+      const dirty: Record<string, AttendanceStatus> = {};
+      Object.entries(prev).forEach(([id, st]) => {
+        const item = data.find((d) => d.traineeId === id);
+        if (item && item.status !== st) {
+          dirty[id] = st;
+        }
       });
-      return merged;
+      return dirty;
     });
 
     // Check holiday
     const holidays = await holidayService.getAllHolidays();
     const matchedHoliday = holidays.find((h) => h.date === dateStr);
     setHolidayName(matchedHoliday ? matchedHoliday.name : null);
-
-    // ONLY trigger automated No Show email dispatch on initial daily load, NEVER on manual saves!
-    if (isDailyAutoTrigger && dateStr === getUAEDateString()) {
-      emailService.triggerAutomatedNoShowEmails(dateStr, data);
-    }
   };
 
   useEffect(() => {
-    const isToday = selectedDate === getUAEDateString();
-    const shouldRunDailyAuto = isToday && !hasTriggeredDailyAutoNoShow.current;
-    if (shouldRunDailyAuto) {
-      hasTriggeredDailyAutoNoShow.current = true;
-    }
-    loadLogs(selectedDate, shouldRunDailyAuto);
+    loadLogs(selectedDate);
 
     // Auto-refresh attendance logs seamlessly every 5 seconds in background
     const interval = setInterval(() => {
-      loadLogs(selectedDate, false);
+      loadLogs(selectedDate);
+
+      // If viewing today's logs and past 08:00 AM cutoff, trigger automated no-show emails once if not already sent today
+      if (selectedDate === getUAEDateString() && isPastCutoffTime(selectedDate)) {
+        emailService.triggerAutomatedNoShowEmails(selectedDate).catch((e) =>
+          console.warn('Automated No Show check error:', e)
+        );
+      }
     }, 5000);
 
     return () => clearInterval(interval);
@@ -171,9 +170,16 @@ export const TraineeLogsTab: React.FC<TraineeLogsTabProps> = ({ refreshTrigger }
         text: `Failed to update status for ${log.name}: ${updateRes.error || 'Database error'}`,
       });
       setSavingId(null);
-      await loadLogs(selectedDate, false);
+      await loadLogs(selectedDate);
       return;
     }
+
+    // Clear the edit state for this trainee since it's successfully saved
+    setStatusEdits((prev) => {
+      const next = { ...prev };
+      delete next[traineeId];
+      return next;
+    });
 
     // 3. Dispatch notification email ONLY to this one trainee if Late to Work or No Show
     const targetTrainee = log;

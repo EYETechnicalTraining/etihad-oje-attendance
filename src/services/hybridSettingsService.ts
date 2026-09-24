@@ -6,7 +6,7 @@ export const DEFAULT_GEOFENCE_SETTINGS: GeofenceSettings = {
   enabled: true,
   centerLatitude: 24.4267,
   centerLongitude: 54.6511,
-  loginRadiusMeters: 50,
+  loginRadiusMeters: 200,
   signOutRadiusMeters: 500,
 };
 
@@ -26,14 +26,21 @@ export class HybridSettingsService {
           try {
             const parsed = JSON.parse(data.password_hash);
             const merged = { ...DEFAULT_GEOFENCE_SETTINGS, ...parsed };
+            const cleanMerged: GeofenceSettings = {
+              enabled: merged.enabled !== false,
+              centerLatitude: Number(merged.centerLatitude) || DEFAULT_GEOFENCE_SETTINGS.centerLatitude,
+              centerLongitude: Number(merged.centerLongitude) || DEFAULT_GEOFENCE_SETTINGS.centerLongitude,
+              loginRadiusMeters: Number(merged.loginRadiusMeters) || DEFAULT_GEOFENCE_SETTINGS.loginRadiusMeters,
+              signOutRadiusMeters: Number(merged.signOutRadiusMeters) || DEFAULT_GEOFENCE_SETTINGS.signOutRadiusMeters,
+            };
             // Sync to Dexie locally
             const local = await db.settings.where('key').equals('geofence_settings').first();
             if (local && local.id) {
-              await db.settings.update(local.id, { value: merged });
+              await db.settings.update(local.id, { value: cleanMerged });
             } else {
-              await db.settings.add({ key: 'geofence_settings', value: merged });
+              await db.settings.add({ key: 'geofence_settings', value: cleanMerged });
             }
-            return merged;
+            return cleanMerged;
           } catch (e) {
             console.warn('Failed to parse geofence JSON from users table:', e);
           }
@@ -43,7 +50,14 @@ export class HybridSettingsService {
       // Dexie fallback
       const local = await db.settings.where('key').equals('geofence_settings').first();
       if (local && local.value) {
-        return { ...DEFAULT_GEOFENCE_SETTINGS, ...local.value };
+        const merged = { ...DEFAULT_GEOFENCE_SETTINGS, ...local.value };
+        return {
+          enabled: merged.enabled !== false,
+          centerLatitude: Number(merged.centerLatitude) || DEFAULT_GEOFENCE_SETTINGS.centerLatitude,
+          centerLongitude: Number(merged.centerLongitude) || DEFAULT_GEOFENCE_SETTINGS.centerLongitude,
+          loginRadiusMeters: Number(merged.loginRadiusMeters) || DEFAULT_GEOFENCE_SETTINGS.loginRadiusMeters,
+          signOutRadiusMeters: Number(merged.signOutRadiusMeters) || DEFAULT_GEOFENCE_SETTINGS.signOutRadiusMeters,
+        };
       }
     } catch (err) {
       console.warn('Failed to load geofence settings, using defaults:', err);
@@ -53,12 +67,20 @@ export class HybridSettingsService {
 
   async saveGeofenceSettings(settings: GeofenceSettings): Promise<{ success: boolean; error?: string }> {
     try {
+      const cleanSettings: GeofenceSettings = {
+        enabled: Boolean(settings.enabled),
+        centerLatitude: Number(settings.centerLatitude) || 24.4267,
+        centerLongitude: Number(settings.centerLongitude) || 54.6511,
+        loginRadiusMeters: Number(settings.loginRadiusMeters) || 200,
+        signOutRadiusMeters: Number(settings.signOutRadiusMeters) || 500,
+      };
+
       // Save locally to Dexie
       const local = await db.settings.where('key').equals('geofence_settings').first();
       if (local && local.id) {
-        await db.settings.update(local.id, { value: settings });
+        await db.settings.update(local.id, { value: cleanSettings });
       } else {
-        await db.settings.add({ key: 'geofence_settings', value: settings });
+        await db.settings.add({ key: 'geofence_settings', value: cleanSettings });
       }
 
       // Save to Supabase central cloud via users table
@@ -66,7 +88,7 @@ export class HybridSettingsService {
         const { error } = await supabase.from('users').upsert(
           {
             username: GEOFENCE_SETTING_KEY,
-            password_hash: JSON.stringify(settings),
+            password_hash: JSON.stringify(cleanSettings),
             role: 'MASTER',
             active: true,
           },

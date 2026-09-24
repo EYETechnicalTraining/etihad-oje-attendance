@@ -138,7 +138,7 @@ export function calculateAttendanceStatus(dateObj?: Date): 'Present' | 'Late to 
     hour: '2-digit',
     minute: '2-digit',
     second: '2-digit',
-    hour12: false,
+    hourCycle: 'h23',
   };
   const parts = new Intl.DateTimeFormat('en-US', options).formatToParts(now);
   let hour = 0;
@@ -174,7 +174,8 @@ export function isPastCutoffTime(dateString: string): boolean {
     timeZone: UAE_TIMEZONE,
     hour: '2-digit',
     minute: '2-digit',
-    hour12: false,
+    second: '2-digit',
+    hourCycle: 'h23',
   };
   const parts = new Intl.DateTimeFormat('en-US', options).formatToParts(now);
   let hour = 0;

@@ -1,3 +1,4 @@
+import { db } from '../db';
 import { attendanceService as dexieAttendance } from './dexie/attendanceService';
 import { supabase, isSupabaseConfigured } from './supabase/client';
 import { Attendance, TraineeLogSummary, AttendanceStatus } from '../types';
@@ -29,15 +30,18 @@ export class HybridAttendanceService implements IAttendanceService {
   }
 
   async getTraineeAttendanceForDate(traineeId: string, date: string): Promise<Attendance | null> {
-    if (!isSupabaseConfigured || !supabase) return await dexieAttendance.getTraineeAttendanceForDate(traineeId, date);
+    const normId = (traineeId || '').trim();
+    if (!isSupabaseConfigured || !supabase) return await dexieAttendance.getTraineeAttendanceForDate(normId, date);
 
     const { data } = await supabase
       .from('attendance')
       .select('*')
-      .eq('trainee_id', traineeId)
+      .ilike('trainee_id', normId)
       .eq('date', date);
 
-    if (!data || data.length === 0) return null;
+    if (!data || data.length === 0) {
+      return await dexieAttendance.getTraineeAttendanceForDate(normId, date);
+    }
     const a = data[0];
     return {
       id: a.id,
@@ -54,11 +58,12 @@ export class HybridAttendanceService implements IAttendanceService {
     traineeId: string,
     authMethod: 'Biometric Passkey (Fingerprint/PIN)' | 'Face Verification Selfie' | 'Password Fallback' | 'WebAuthn/Passkey'
   ): Promise<{ success: boolean; attendance?: Attendance; error?: string }> {
-    if (!isSupabaseConfigured || !supabase) return await dexieAttendance.logAttendance(traineeId, authMethod);
+    const normTraineeId = (traineeId || '').trim();
+    if (!isSupabaseConfigured || !supabase) return await dexieAttendance.logAttendance(normTraineeId, authMethod);
 
     try {
       const today = getUAEDateString();
-      const existing = await this.getTraineeAttendanceForDate(traineeId, today);
+      const existing = await this.getTraineeAttendanceForDate(normTraineeId, today);
 
       if (existing) {
         return {
@@ -73,7 +78,7 @@ export class HybridAttendanceService implements IAttendanceService {
       const createdAt = new Date().toISOString();
 
       const { data, error } = await supabase.from('attendance').insert([{
-        trainee_id: traineeId,
+        trainee_id: normTraineeId,
         date: today,
         login_time: loginTime,
         status,
@@ -83,11 +88,25 @@ export class HybridAttendanceService implements IAttendanceService {
 
       if (error || !data) return { success: false, error: error?.message || 'Failed to log attendance.' };
 
+      // Sync to Dexie locally
+      try {
+        await db.attendance.add({
+          traineeId: normTraineeId,
+          date: today,
+          loginTime,
+          status,
+          authenticationMethod: authMethod,
+          createdAt,
+        });
+      } catch (dexieErr) {
+        // Non-blocking local sync
+      }
+
       return {
         success: true,
         attendance: {
           id: data[0].id,
-          traineeId,
+          traineeId: normTraineeId,
           date: today,
           loginTime,
           status,
@@ -114,10 +133,18 @@ export class HybridAttendanceService implements IAttendanceService {
     if (!allTrainees) return [];
 
     const attendanceMap = new Map<string, any>();
-    (attendanceRecords || []).forEach((a: any) => attendanceMap.set(a.trainee_id, a));
+    (attendanceRecords || []).forEach((a: any) => {
+      if (a.trainee_id) {
+        attendanceMap.set(String(a.trainee_id).trim().toUpperCase(), a);
+      }
+    });
 
     const signOutMap = new Map<string, string>();
-    (signOutRecords || []).forEach((s: any) => signOutMap.set(s.trainee_id, s.sign_out_time));
+    (signOutRecords || []).forEach((s: any) => {
+      if (s.trainee_id) {
+        signOutMap.set(String(s.trainee_id).trim().toUpperCase(), s.sign_out_time);
+      }
+    });
 
     const past8AM = isPastCutoffTime(targetDate);
     const holidays = await holidayService.getAllHolidays();
@@ -128,8 +155,9 @@ export class HybridAttendanceService implements IAttendanceService {
 
     for (let i = 0; i < allTrainees.length; i++) {
       const trainee = allTrainees[i];
-      const att = attendanceMap.get(trainee.trainee_id);
-      const signOutTime = signOutMap.get(trainee.trainee_id) || '-';
+      const normTraineeId = String(trainee.trainee_id || '').trim().toUpperCase();
+      const att = attendanceMap.get(normTraineeId);
+      const signOutTime = signOutMap.get(normTraineeId) || '-';
 
       let status: AttendanceStatus = 'No Show';
       let loginTime = '-';
@@ -163,14 +191,22 @@ export class HybridAttendanceService implements IAttendanceService {
 
       const effectiveSignOutTime = status === 'No Show' ? '-' : signOutTime;
 
-      const allocations = (allAllocations || []).filter((al: any) => al.trainee_id === trainee.trainee_id);
+      const allocations = (allAllocations || []).filter(
+        (al: any) => String(al.trainee_id || '').trim().toUpperCase() === normTraineeId
+      );
       const traineeTasks = (allTaskCounts || [])
-        .filter((tc: any) => tc.trainee_id === trainee.trainee_id)
+        .filter((tc: any) => String(tc.trainee_id || '').trim().toUpperCase() === normTraineeId)
         .sort((a: any, b: any) => Number(b.timestamp) - Number(a.timestamp));
       const latestTask = traineeTasks.length > 0 ? traineeTasks[0].task_count : null;
 
-      const user = (allUsers || []).find((u: any) => u.trainee_id === trainee.trainee_id || u.username === trainee.email);
-      const passkeys = (allPasskeys || []).filter((pk: any) => pk.trainee_id === trainee.trainee_id);
+      const user = (allUsers || []).find(
+        (u: any) =>
+          (u.trainee_id && String(u.trainee_id).trim().toUpperCase() === normTraineeId) ||
+          (u.username && trainee.email && u.username.trim().toLowerCase() === trainee.email.trim().toLowerCase())
+      );
+      const passkeys = (allPasskeys || []).filter(
+        (pk: any) => String(pk.trainee_id || '').trim().toUpperCase() === normTraineeId
+      );
 
       logs.push({
         srNo: i + 1,
