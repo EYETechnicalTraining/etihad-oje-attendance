@@ -132,9 +132,9 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
       </div>
 
       <div className="login-footer-credit">
-        <span>Developed By <strong style={{ color: '#C5A059' }}>Shlok Raskar</strong></span>
-        <span className="credit-sep" style={{ color: '#64748B' }}>|</span>
-        <span>Copyrights <strong style={{ color: '#C5A059' }}>Shlok Raskar</strong> 2026</span>
+        <span>Developed By <strong style={{ color: 'inherit', fontWeight: 'normal' }}>Shlok Raskar</strong></span>
+        <span className="credit-sep">|</span>
+        <span>Copyrights <strong style={{ color: 'inherit', fontWeight: 'normal' }}>Shlok Raskar</strong> 2026</span>
       </div>
     </div>
   );
