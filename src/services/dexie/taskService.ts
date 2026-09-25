@@ -1,6 +1,7 @@
 import { db } from '../../db';
 import { TaskCount, SignOut } from '../../types';
 import { getUAEDateString, getUAETimeString } from '../../utils/timezone';
+import { attendanceService } from './attendanceService';
 import { ITaskService } from '../api';
 
 export class DexieTaskService implements ITaskService {
@@ -75,6 +76,15 @@ export class DexieTaskService implements ITaskService {
         return {
           success: false,
           error: `You have already signed out today at ${existing.signOutTime}.`,
+        };
+      }
+
+      // Sign-Out Rule: Only allowed if trainee has active attendance (Present or Late to Work), blocked if No Show or missing
+      const att = await attendanceService.getTraineeAttendanceForDate(traineeId, today);
+      if (!att || att.status === 'No Show') {
+        return {
+          success: false,
+          error: 'Daily Sign-Out is blocked: No active attendance found for today. Daily Sign-Out is only allowed for trainees who have logged attendance (Present or Late to Work).',
         };
       }
 

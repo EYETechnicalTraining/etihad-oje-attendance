@@ -65,7 +65,7 @@ export class HybridAttendanceService implements IAttendanceService {
       const today = getUAEDateString();
       const existing = await this.getTraineeAttendanceForDate(normTraineeId, today);
 
-      if (existing) {
+      if (existing && existing.status !== 'No Show') {
         return {
           success: false,
           error: `Attendance already registered for today (${today}) at ${existing.loginTime}.`,
@@ -76,6 +76,43 @@ export class HybridAttendanceService implements IAttendanceService {
       const loginTime = getUAETimeString(now, true);
       const status: AttendanceStatus = calculateAttendanceStatus(now);
       const createdAt = new Date().toISOString();
+
+      if (existing) {
+        const { error } = await supabase
+          .from('attendance')
+          .update({
+            login_time: loginTime,
+            status,
+            authentication_method: authMethod,
+          })
+          .eq('id', existing.id);
+
+        if (error) return { success: false, error: error.message };
+
+        // Sync to Dexie
+        try {
+          const localRec = await dexieAttendance.getTraineeAttendanceForDate(normTraineeId, today);
+          if (localRec && localRec.id) {
+            await db.attendance.update(localRec.id, {
+              loginTime,
+              status,
+              authenticationMethod: authMethod,
+            });
+          }
+        } catch {
+          // non-blocking
+        }
+
+        return {
+          success: true,
+          attendance: {
+            ...existing,
+            loginTime,
+            status,
+            authenticationMethod: authMethod,
+          },
+        };
+      }
 
       const { data, error } = await supabase.from('attendance').insert([{
         trainee_id: normTraineeId,
@@ -277,8 +314,7 @@ export class HybridAttendanceService implements IAttendanceService {
             status: newStatus,
             login_time: computedLoginTime,
           })
-          .eq('trainee_id', traineeId)
-          .eq('date', date);
+          .eq('id', existing.id);
 
         if (error) return { success: false, error: error.message };
       } else {

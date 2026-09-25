@@ -56,6 +56,10 @@ export const AccessControlTab: React.FC<AccessControlTabProps> = ({ currentUser,
 
   // ---------------- Trainee Actions ----------------
   const handleResetPassword = async (traineeId: string, name: string) => {
+    // Instant optimistic update on 1 click to show DEFAULT immediately
+    setLogs((prev) =>
+      prev.map((l) => (l.traineeId === traineeId ? { ...l, lastPasswordChange: null } : l))
+    );
     const res = await authService.resetTraineePassword(traineeId);
     if (res.success) {
       setMsg({
@@ -64,6 +68,7 @@ export const AccessControlTab: React.FC<AccessControlTabProps> = ({ currentUser,
       });
     } else {
       setMsg({ type: 'error', text: res.error || 'Failed to reset password.' });
+      await loadData();
     }
   };
 
@@ -116,6 +121,10 @@ export const AccessControlTab: React.FC<AccessControlTabProps> = ({ currentUser,
 
   const handleResetInstructorPassword = async (username: string, staffNumber: string, name: string) => {
     setMsg(null);
+    // Instant optimistic update on 1 click to show DEFAULT immediately
+    setInstructors((prev) =>
+      prev.map((inst) => (inst.email === username ? { ...inst, lastPasswordChange: null } : inst))
+    );
     const res = await authService.resetInstructorPassword(username, staffNumber);
     if (res.success) {
       setMsg({
@@ -124,6 +133,7 @@ export const AccessControlTab: React.FC<AccessControlTabProps> = ({ currentUser,
       });
     } else {
       setMsg({ type: 'error', text: res.error || 'Failed to reset instructor password.' });
+      await loadData();
     }
   };
 
@@ -257,6 +267,7 @@ export const AccessControlTab: React.FC<AccessControlTabProps> = ({ currentUser,
                   <th>Instructor Name</th>
                   <th>Login Username (Email)</th>
                   <th>Account Status</th>
+                  <th>Password Status</th>
                   <th>Last Password Change</th>
                   <th style={{ textAlign: 'center' }}>Actions</th>
                 </tr>
@@ -264,7 +275,7 @@ export const AccessControlTab: React.FC<AccessControlTabProps> = ({ currentUser,
               <tbody>
                 {instructors.length === 0 ? (
                   <tr>
-                    <td colSpan={6} style={{ textAlign: 'center', padding: '1.5rem', color: '#64748B' }}>
+                    <td colSpan={7} style={{ textAlign: 'center', padding: '1.5rem', color: '#64748B' }}>
                       No instructors registered yet. Use the form above to add an instructor.
                     </td>
                   </tr>
@@ -281,7 +292,14 @@ export const AccessControlTab: React.FC<AccessControlTabProps> = ({ currentUser,
                           <span className="badge badge-noshow">DISABLED</span>
                         )}
                       </td>
-                      <td style={{ color: '#64748B' }}>{inst.lastPasswordChange || 'Not Changed'}</td>
+                      <td>
+                        {inst.lastPasswordChange ? (
+                          <span className="badge badge-present">CHANGED</span>
+                        ) : (
+                          <span className="badge badge-late">DEFAULT</span>
+                        )}
+                      </td>
+                      <td style={{ color: '#64748B', fontSize: '0.85rem' }}>{inst.lastPasswordChange || 'Default'}</td>
                       <td style={{ textAlign: 'center' }}>
                         <div style={{ display: 'inline-flex', gap: '0.4rem' }}>
                           <button
@@ -383,7 +401,7 @@ export const AccessControlTab: React.FC<AccessControlTabProps> = ({ currentUser,
                       )}
                     </td>
                     <td style={{ fontSize: '0.85rem', color: '#64748B' }}>
-                      {log.lastPasswordChange || 'Not Changed'}
+                      {log.lastPasswordChange || 'Default'}
                     </td>
                     <td>
                       {log.passkeyRegistered ? (

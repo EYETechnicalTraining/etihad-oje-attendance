@@ -2,6 +2,7 @@ import { taskService as dexieTask } from './dexie/taskService';
 import { supabase, isSupabaseConfigured } from './supabase/client';
 import { TaskCount, SignOut } from '../types';
 import { getUAEDateString, getUAETimeString } from '../utils/timezone';
+import { attendanceService } from './hybridAttendanceService';
 import { ITaskService } from './api';
 import { auditService } from './hybridAuditService';
 
@@ -126,6 +127,15 @@ export class HybridTaskService implements ITaskService {
         return {
           success: false,
           error: `You have already signed out today at ${existing.signOutTime}.`,
+        };
+      }
+
+      // Sign-Out Rule: Only allowed if trainee has active attendance (Present or Late to Work), blocked if No Show or missing
+      const att = await attendanceService.getTraineeAttendanceForDate(normId, today);
+      if (!att || att.status === 'No Show') {
+        return {
+          success: false,
+          error: 'Daily Sign-Out is blocked: No active attendance found for today. Daily Sign-Out is only allowed for trainees who have logged attendance (Present or Late to Work).',
         };
       }
 

@@ -16,9 +16,11 @@ export class DexieAttendanceService implements IAttendanceService {
   }
 
   async getTraineeAttendanceForDate(traineeId: string, date: string): Promise<Attendance | null> {
+    const normId = (traineeId || '').trim().toUpperCase();
     const record = await db.attendance
-      .where('[traineeId+date]')
-      .equals([traineeId, date])
+      .where('date')
+      .equals(date)
+      .and((a) => (a.traineeId || '').trim().toUpperCase() === normId)
       .first();
     return record || null;
   }
@@ -31,7 +33,7 @@ export class DexieAttendanceService implements IAttendanceService {
       const today = getUAEDateString();
       const existing = await this.getTraineeAttendanceForDate(traineeId, today);
 
-      if (existing) {
+      if (existing && existing.status !== 'No Show') {
         return {
           success: false,
           error: `Attendance already registered for today (${today}) at ${existing.loginTime}.`,
@@ -42,6 +44,33 @@ export class DexieAttendanceService implements IAttendanceService {
       const loginTime = getUAETimeString(now, true);
       const status: AttendanceStatus = calculateAttendanceStatus(now);
       const createdAt = new Date().toISOString();
+
+      if (existing && existing.id) {
+        await db.attendance.update(existing.id, {
+          loginTime,
+          status,
+          authenticationMethod: authMethod,
+        });
+
+        await db.auditLogs.add({
+          user: traineeId,
+          action: `Updated Attendance from No Show to ${status} at ${loginTime}`,
+          date: today,
+          time: loginTime,
+          relatedTrainee: traineeId,
+          timestamp: Date.now(),
+        });
+
+        return {
+          success: true,
+          attendance: {
+            ...existing,
+            loginTime,
+            status,
+            authenticationMethod: authMethod,
+          },
+        };
+      }
 
       const newAttendance: Attendance = {
         traineeId,
@@ -202,14 +231,11 @@ export class DexieAttendanceService implements IAttendanceService {
         computedLoginTime = `Manual (${newStatus})`;
       }
 
-      if (existing) {
-        await db.attendance
-          .where('[traineeId+date]')
-          .equals([traineeId, date])
-          .modify({
-            status: newStatus,
-            loginTime: computedLoginTime,
-          });
+      if (existing && existing.id) {
+        await db.attendance.update(existing.id, {
+          status: newStatus,
+          loginTime: computedLoginTime,
+        });
       } else {
         await db.attendance.add({
           traineeId,
