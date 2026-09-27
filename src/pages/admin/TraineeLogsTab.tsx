@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from 'react';
-import { TraineeLogSummary, Allocation, TaskCount, User, AttendanceStatus } from '../../types';
+import React, { useState, useEffect, useMemo } from 'react';
+import { TraineeLogSummary, Allocation, TaskCount, User, AttendanceStatus, Batch } from '../../types';
 import { attendanceService } from '../../services/hybridAttendanceService';
 import { allocationService } from '../../services/hybridAllocationService';
 import { taskService } from '../../services/hybridTaskService';
 import { emailService } from '../../services/emailService';
 import { holidayService } from '../../services/hybridHolidayService';
+import { traineeService } from '../../services/hybridTraineeService';
 import {
   getUAEDateString,
   formatDisplayDate,
@@ -27,6 +28,11 @@ import {
   Coffee,
   Save,
   Sun,
+  Search,
+  Filter,
+  ArrowUpDown,
+  RotateCcw,
+  X,
 } from 'lucide-react';
 
 interface TraineeLogsTabProps {
@@ -36,6 +42,10 @@ interface TraineeLogsTabProps {
 export const TraineeLogsTab: React.FC<TraineeLogsTabProps> = ({ refreshTrigger }) => {
   const [selectedDate, setSelectedDate] = useState<string>(getUAEDateString());
   const [logs, setLogs] = useState<TraineeLogSummary[]>([]);
+  const [batches, setBatches] = useState<Batch[]>([]);
+  const [searchQuery, setSearchQuery] = useState<string>('');
+  const [selectedBatch, setSelectedBatch] = useState<string>('ALL');
+  const [sortBy, setSortBy] = useState<string>('batch_staff');
   const [statusEdits, setStatusEdits] = useState<Record<string, AttendanceStatus>>({});
   const [savingId, setSavingId] = useState<string | null>(null);
   const [holidayName, setHolidayName] = useState<string | null>(null);
@@ -53,8 +63,14 @@ export const TraineeLogsTab: React.FC<TraineeLogsTabProps> = ({ refreshTrigger }
   );
 
   const loadLogs = async (dateStr: string) => {
-    const data = await attendanceService.getTraineeLogsForDate(dateStr);
+    const [data, bList, holidays] = await Promise.all([
+      attendanceService.getTraineeLogsForDate(dateStr),
+      traineeService.getBatches(),
+      holidayService.getAllHolidays(),
+    ]);
+
     setLogs(data);
+    setBatches(bList || []);
 
     // Preserve ONLY dirty, unsaved status dropdown choices made by the user
     setStatusEdits((prev) => {
@@ -69,7 +85,6 @@ export const TraineeLogsTab: React.FC<TraineeLogsTabProps> = ({ refreshTrigger }
     });
 
     // Check holiday
-    const holidays = await holidayService.getAllHolidays();
     const matchedHoliday = holidays.find((h) => h.date === dateStr);
     setHolidayName(matchedHoliday ? matchedHoliday.name : null);
   };
@@ -257,6 +272,76 @@ export const TraineeLogsTab: React.FC<TraineeLogsTabProps> = ({ refreshTrigger }
     setTaskModal({ open: true, traineeId, name });
   };
 
+  const compareBatchAndStaff = (a: TraineeLogSummary, b: TraineeLogSummary) => {
+    const batchA = (a.batch || '').trim();
+    const batchB = (b.batch || '').trim();
+    const bComp = batchA.localeCompare(batchB, undefined, { numeric: true, sensitivity: 'base' });
+    if (bComp !== 0) return bComp;
+    const idA = String(a.traineeId || '').trim();
+    const idB = String(b.traineeId || '').trim();
+    return idA.localeCompare(idB, undefined, { numeric: true, sensitivity: 'base' });
+  };
+
+  const allBatchOptions = useMemo(() => {
+    const set = new Set<string>();
+    batches.forEach((b) => {
+      if (b.name && b.name.trim()) set.add(b.name.trim());
+    });
+    logs.forEach((l) => {
+      if (l.batch && l.batch.trim()) set.add(l.batch.trim());
+    });
+    return Array.from(set).sort((a, b) =>
+      a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' })
+    );
+  }, [batches, logs]);
+
+  const filteredLogs = useMemo(() => {
+    let result = [...logs];
+
+    // 1. Batch filter
+    if (selectedBatch !== 'ALL') {
+      const norm = selectedBatch.trim().toUpperCase();
+      result = result.filter((l) => (l.batch || '').trim().toUpperCase() === norm);
+    }
+
+    // 2. Search query (trainee name or staff no)
+    if (searchQuery.trim()) {
+      const q = searchQuery.trim().toLowerCase();
+      result = result.filter(
+        (l) =>
+          (l.name || '').toLowerCase().includes(q) ||
+          String(l.traineeId || '').toLowerCase().includes(q)
+      );
+    }
+
+    // 3. Sorting
+    result.sort((a, b) => {
+      switch (sortBy) {
+        case 'staff_asc':
+          return String(a.traineeId || '').trim().localeCompare(String(b.traineeId || '').trim(), undefined, { numeric: true, sensitivity: 'base' });
+        case 'staff_desc':
+          return String(b.traineeId || '').trim().localeCompare(String(a.traineeId || '').trim(), undefined, { numeric: true, sensitivity: 'base' });
+        case 'name_asc':
+          return (a.name || '').trim().localeCompare((b.name || '').trim(), undefined, { sensitivity: 'base' });
+        case 'name_desc':
+          return (b.name || '').trim().localeCompare((a.name || '').trim(), undefined, { sensitivity: 'base' });
+        case 'batch_asc': {
+          const bc = (a.batch || '').trim().localeCompare((b.batch || '').trim(), undefined, { numeric: true, sensitivity: 'base' });
+          return bc !== 0 ? bc : String(a.traineeId || '').trim().localeCompare(String(b.traineeId || '').trim(), undefined, { numeric: true, sensitivity: 'base' });
+        }
+        case 'status': {
+          const sc = (a.status || '').localeCompare(b.status || '');
+          return sc !== 0 ? sc : compareBatchAndStaff(a, b);
+        }
+        case 'batch_staff':
+        default:
+          return compareBatchAndStaff(a, b);
+      }
+    });
+
+    return result;
+  }, [logs, selectedBatch, searchQuery, sortBy]);
+
   const selectedIsWeekend = isWeekend(selectedDate);
 
   return (
@@ -341,6 +426,157 @@ export const TraineeLogsTab: React.FC<TraineeLogsTabProps> = ({ refreshTrigger }
         </div>
       )}
 
+      {/* Search, Filter & Sort Controls Bar */}
+      <div
+        style={{
+          display: 'flex',
+          flexWrap: 'wrap',
+          gap: '0.75rem',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          background: '#F8FAFC',
+          padding: '0.75rem 1rem',
+          borderRadius: '8px',
+          border: '1px solid #E2E8F0',
+          marginBottom: '1rem',
+        }}
+      >
+        {/* Left: Search Bar */}
+        <div style={{ position: 'relative', flex: '1 1 260px', maxWidth: '380px' }}>
+          <Search
+            size={16}
+            color="#64748B"
+            style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}
+          />
+          <input
+            type="text"
+            className="form-control"
+            placeholder="Search trainee name or staff no..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            style={{
+              paddingLeft: '2rem',
+              paddingRight: searchQuery ? '2rem' : '0.75rem',
+              height: '36px',
+              fontSize: '0.85rem',
+              borderColor: '#CBD5E1',
+            }}
+          />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery('')}
+              style={{
+                position: 'absolute',
+                right: '8px',
+                top: '50%',
+                transform: 'translateY(-50%)',
+                background: 'transparent',
+                border: 'none',
+                color: '#94A3B8',
+                cursor: 'pointer',
+                padding: '2px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+              title="Clear Search"
+            >
+              <X size={14} />
+            </button>
+          )}
+        </div>
+
+        {/* Right Controls: Batch Filter + Sort By Selector + Reset + Count */}
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.6rem', alignItems: 'center' }}>
+          {/* Batch Filter Dropdown */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+            <Filter size={15} color="#C5A059" />
+            <select
+              className="form-control"
+              value={selectedBatch}
+              onChange={(e) => setSelectedBatch(e.target.value)}
+              style={{
+                height: '36px',
+                fontSize: '0.82rem',
+                fontWeight: 600,
+                borderColor: selectedBatch !== 'ALL' ? '#C5A059' : '#CBD5E1',
+                background: selectedBatch !== 'ALL' ? '#FFFBEB' : '#FFFFFF',
+                minWidth: '155px',
+              }}
+              title="Filter by Batch (All batches added in the system)"
+            >
+              <option value="ALL">All Batches ({logs.length})</option>
+              {allBatchOptions.map((b) => {
+                const count = logs.filter((l) => (l.batch || '').trim().toUpperCase() === b.toUpperCase()).length;
+                return (
+                  <option key={b} value={b}>
+                    Batch: {b} ({count})
+                  </option>
+                );
+              })}
+            </select>
+          </div>
+
+          {/* Sort By Dropdown */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+            <ArrowUpDown size={15} color="#0A192F" />
+            <select
+              className="form-control"
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value)}
+              style={{
+                height: '36px',
+                fontSize: '0.82rem',
+                fontWeight: 600,
+                borderColor: sortBy !== 'batch_staff' ? '#0A192F' : '#CBD5E1',
+                minWidth: '190px',
+              }}
+              title="Sort Trainees"
+            >
+              <option value="batch_staff">Sort: Batch & Staff No (Default)</option>
+              <option value="staff_asc">Sort: Staff No (Low to High)</option>
+              <option value="staff_desc">Sort: Staff No (High to Low)</option>
+              <option value="name_asc">Sort: Trainee Name (A - Z)</option>
+              <option value="name_desc">Sort: Trainee Name (Z - A)</option>
+              <option value="batch_asc">Sort: Batch (A - Z)</option>
+              <option value="status">Sort: Status</option>
+            </select>
+          </div>
+
+          {/* Reset Filters & Search Button */}
+          {(searchQuery || selectedBatch !== 'ALL' || sortBy !== 'batch_staff') && (
+            <button
+              onClick={() => {
+                setSearchQuery('');
+                setSelectedBatch('ALL');
+                setSortBy('batch_staff');
+              }}
+              className="btn btn-outline btn-sm"
+              style={{ height: '36px', fontSize: '0.78rem', padding: '0 0.6rem', color: '#64748B' }}
+              title="Reset all filters and sorting to default"
+            >
+              <RotateCcw size={13} />
+              <span>Reset</span>
+            </button>
+          )}
+
+          {/* Showing Count Badge */}
+          <div
+            style={{
+              fontSize: '0.78rem',
+              fontWeight: 600,
+              color: '#475569',
+              background: '#EDF2F7',
+              padding: '0.35rem 0.65rem',
+              borderRadius: '6px',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            Showing <strong style={{ color: '#0A192F' }}>{filteredLogs.length}</strong> of {logs.length}
+          </div>
+        </div>
+      </div>
+
       {/* Trainee Logs Table */}
       <div className="table-responsive">
         <table className="custom-table">
@@ -349,6 +585,7 @@ export const TraineeLogsTab: React.FC<TraineeLogsTabProps> = ({ refreshTrigger }
               <th>Sr. No</th>
               <th>Staff No</th>
               <th>Name</th>
+              <th>Batch</th>
               <th>Status & Manual Override</th>
               <th>Log In Time</th>
               <th>Sign Out Time</th>
@@ -358,18 +595,55 @@ export const TraineeLogsTab: React.FC<TraineeLogsTabProps> = ({ refreshTrigger }
             </tr>
           </thead>
           <tbody>
-            {logs.length === 0 ? (
+            {filteredLogs.length === 0 ? (
               <tr>
-                <td colSpan={9} style={{ textAlign: 'center', padding: '2rem', color: '#64748B' }}>
-                  No trainees registered in the system yet.
+                <td colSpan={10} style={{ textAlign: 'center', padding: '2.5rem 1rem', color: '#64748B' }}>
+                  {logs.length === 0 ? (
+                    'No trainees registered in the system yet.'
+                  ) : (
+                    <div>
+                      <p style={{ fontWeight: 600, marginBottom: '0.6rem', color: '#1E293B', fontSize: '0.9rem' }}>
+                        No trainees match your search or filter criteria.
+                      </p>
+                      <button
+                        onClick={() => {
+                          setSearchQuery('');
+                          setSelectedBatch('ALL');
+                          setSortBy('batch_staff');
+                        }}
+                        className="btn btn-outline btn-sm"
+                        style={{ fontSize: '0.8rem', display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}
+                      >
+                        <RotateCcw size={13} />
+                        <span>Reset Filters & Search</span>
+                      </button>
+                    </div>
+                  )}
                 </td>
               </tr>
             ) : (
-              logs.map((log) => (
+              filteredLogs.map((log, index) => (
                 <tr key={log.traineeId}>
-                  <td>{log.srNo}</td>
+                  <td>{index + 1}</td>
                   <td style={{ fontWeight: 700, color: '#0A192F' }}>{log.traineeId}</td>
                   <td style={{ fontWeight: 600 }}>{log.name}</td>
+                  <td>
+                    <span
+                      style={{
+                        display: 'inline-block',
+                        padding: '0.2rem 0.5rem',
+                        borderRadius: '4px',
+                        fontSize: '0.75rem',
+                        fontWeight: 700,
+                        background: '#F1F5F9',
+                        color: '#334155',
+                        border: '1px solid #CBD5E1',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {log.batch || '-'}
+                    </span>
+                  </td>
                   <td style={{ minWidth: '220px' }}>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
                       <div>

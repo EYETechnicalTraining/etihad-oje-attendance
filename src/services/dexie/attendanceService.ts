@@ -100,7 +100,15 @@ export class DexieAttendanceService implements IAttendanceService {
   }
 
   async getTraineeLogsForDate(targetDate: string): Promise<TraineeLogSummary[]> {
-    const allTrainees = await db.trainees.toArray();
+    const allTrainees = (await db.trainees.toArray()).sort((a, b) => {
+      const batchA = (a.batchId || '').trim();
+      const batchB = (b.batchId || '').trim();
+      const bComp = batchA.localeCompare(batchB, undefined, { numeric: true, sensitivity: 'base' });
+      if (bComp !== 0) return bComp;
+      const idA = (a.traineeId || '').trim();
+      const idB = (b.traineeId || '').trim();
+      return idA.localeCompare(idB, undefined, { numeric: true, sensitivity: 'base' });
+    });
     const attendanceRecords = await db.attendance.where('date').equals(targetDate).toArray();
     const signOutRecords = await db.signOuts.where('date').equals(targetDate).toArray();
     const allAllocations = await db.allocations.where('date').equals(targetDate).toArray();

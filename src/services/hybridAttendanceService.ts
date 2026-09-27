@@ -178,6 +178,16 @@ export class HybridAttendanceService implements IAttendanceService {
 
     if (!allTrainees) return [];
 
+    const sortedTrainees = [...allTrainees].sort((a: any, b: any) => {
+      const batchA = (a.batch_id || '').trim();
+      const batchB = (b.batch_id || '').trim();
+      const bComp = batchA.localeCompare(batchB, undefined, { numeric: true, sensitivity: 'base' });
+      if (bComp !== 0) return bComp;
+      const idA = String(a.trainee_id || '').trim();
+      const idB = String(b.trainee_id || '').trim();
+      return idA.localeCompare(idB, undefined, { numeric: true, sensitivity: 'base' });
+    });
+
     const attendanceMap = new Map<string, any>();
     (attendanceRecords || []).forEach((a: any) => {
       if (a.trainee_id) {
@@ -199,8 +209,8 @@ export class HybridAttendanceService implements IAttendanceService {
 
     const logs: TraineeLogSummary[] = [];
 
-    for (let i = 0; i < allTrainees.length; i++) {
-      const trainee = allTrainees[i];
+    for (let i = 0; i < sortedTrainees.length; i++) {
+      const trainee = sortedTrainees[i];
       const normTraineeId = String(trainee.trainee_id || '').trim().toUpperCase();
       const att = attendanceMap.get(normTraineeId);
       const signOutTime = signOutMap.get(normTraineeId) || '-';
