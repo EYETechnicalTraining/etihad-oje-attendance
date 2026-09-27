@@ -199,15 +199,22 @@ export class DexieAttendanceService implements IAttendanceService {
     existingLoginTime?: string
   ): Promise<{ success: boolean; error?: string }> {
     try {
-      const existing = await this.getTraineeAttendanceForDate(traineeId, date);
+      const normTraineeId = (traineeId || '').trim();
+      const existing = await this.getTraineeAttendanceForDate(normTraineeId, date);
       const now = new Date();
       const timeStr = getUAETimeString(now, true);
 
       let computedLoginTime = '-';
       if (newStatus === 'No Show') {
         computedLoginTime = '-';
-        // Clear sign out record for No Show
-        await db.signOuts.where('[traineeId+date]').equals([traineeId, date]).delete();
+        // Clear sign out record for No Show (case-insensitive)
+        const allSignOuts = await db.signOuts.where('date').equals(date).toArray();
+        const toDelete = allSignOuts.filter(
+          (s) => String(s.traineeId).trim().toUpperCase() === normTraineeId.toUpperCase()
+        );
+        for (const s of toDelete) {
+          if (s.id) await db.signOuts.delete(s.id);
+        }
       } else if (newStatus === 'Late to Work') {
         computedLoginTime = 'Logged in after 7:30 am';
       } else if (newStatus === 'Present') {
@@ -238,21 +245,21 @@ export class DexieAttendanceService implements IAttendanceService {
         });
       } else {
         await db.attendance.add({
-          traineeId,
+          traineeId: normTraineeId,
           date,
           loginTime: computedLoginTime,
           status: newStatus,
-          authenticationMethod: 'Password Fallback',
+          authenticationMethod: 'Manual Override',
           createdAt: new Date().toISOString(),
         });
       }
 
       await db.auditLogs.add({
         user: 'MASTER',
-        action: `Manually updated status for ${traineeId} on ${date} to ${newStatus}`,
+        action: `Manually updated status for ${normTraineeId} on ${date} to ${newStatus}`,
         date,
         time: timeStr,
-        relatedTrainee: traineeId,
+        relatedTrainee: normTraineeId,
         timestamp: Date.now(),
       });
 

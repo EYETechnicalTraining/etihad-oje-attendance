@@ -95,7 +95,7 @@ export interface Attendance {
   date: string; // YYYY-MM-DD (Asia/Dubai)
   loginTime: string; // HH:MM:SS AM/PM
   status: AttendanceStatus;
-  authenticationMethod: 'Biometric Passkey (Fingerprint/PIN)' | 'Face Verification Selfie' | 'Password Fallback' | 'WebAuthn/Passkey';
+  authenticationMethod: 'Biometric Passkey (Fingerprint/PIN)' | 'Face Verification Selfie' | 'Password Fallback' | 'WebAuthn/Passkey' | 'Manual Override';
   selfieImage?: string | null; // Verification selfie snapshot
   createdAt: string;
 }

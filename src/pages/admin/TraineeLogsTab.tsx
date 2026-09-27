@@ -60,7 +60,7 @@ export const TraineeLogsTab: React.FC<TraineeLogsTabProps> = ({ refreshTrigger }
     setStatusEdits((prev) => {
       const dirty: Record<string, AttendanceStatus> = {};
       Object.entries(prev).forEach(([id, st]) => {
-        const item = data.find((d) => d.traineeId === id);
+        const item = data.find((d) => String(d.traineeId).trim().toUpperCase() === String(id).trim().toUpperCase());
         if (item && item.status !== st) {
           dirty[id] = st;
         }
@@ -100,13 +100,14 @@ export const TraineeLogsTab: React.FC<TraineeLogsTabProps> = ({ refreshTrigger }
     setSelectedDate(getNextDateString(selectedDate));
   };
 
-  const handleStatusChange = (traineeId: string, newStatus: AttendanceStatus) => {
-    setStatusEdits((prev) => ({ ...prev, [traineeId]: newStatus }));
+  const handleStatusChange = async (log: TraineeLogSummary, newStatus: AttendanceStatus) => {
+    setStatusEdits((prev) => ({ ...prev, [log.traineeId]: newStatus }));
+    await handleSaveStatus(log, newStatus);
   };
 
-  const handleSaveStatus = async (log: TraineeLogSummary) => {
+  const handleSaveStatus = async (log: TraineeLogSummary, overrideStatus?: AttendanceStatus) => {
     const traineeId = log.traineeId;
-    const targetStatus = statusEdits[traineeId] || log.status;
+    const targetStatus = overrideStatus || statusEdits[traineeId] || log.status;
     const prevStatus = log.status;
     const existingLoginTime = log.loginTime;
 
@@ -141,7 +142,7 @@ export const TraineeLogsTab: React.FC<TraineeLogsTabProps> = ({ refreshTrigger }
     // 1. INSTANT OPTIMISTIC UI UPDATE ON FIRST CLICK!
     setLogs((prevLogs) =>
       prevLogs.map((l) =>
-        l.traineeId === traineeId
+        String(l.traineeId).trim().toUpperCase() === String(traineeId).trim().toUpperCase()
           ? {
               ...l,
               status: targetStatus,
@@ -232,6 +233,11 @@ export const TraineeLogsTab: React.FC<TraineeLogsTabProps> = ({ refreshTrigger }
           text: `Status for ${targetTrainee.name} updated to "${targetStatus}".`,
         });
       }
+    } else {
+      setNotification({
+        type: 'success',
+        text: `Status for ${targetTrainee.name} updated to "${targetStatus}".`,
+      });
     }
 
     setSavingId(null);
@@ -380,8 +386,9 @@ export const TraineeLogsTab: React.FC<TraineeLogsTabProps> = ({ refreshTrigger }
                             borderColor: '#CBD5E1',
                             borderRadius: '4px',
                           }}
+                          disabled={savingId === log.traineeId}
                           value={statusEdits[log.traineeId] !== undefined ? statusEdits[log.traineeId] : log.status}
-                          onChange={(e) => handleStatusChange(log.traineeId, e.target.value as AttendanceStatus)}
+                          onChange={(e) => handleStatusChange(log, e.target.value as AttendanceStatus)}
                         >
                           <option value="Present">Present</option>
                           <option value="Late to Work">Late to Work</option>
@@ -393,7 +400,7 @@ export const TraineeLogsTab: React.FC<TraineeLogsTabProps> = ({ refreshTrigger }
                           <option value="Stand Down">Stand Down</option>
                         </select>
                         <button
-                          onClick={() => handleSaveStatus(log)}
+                          onClick={() => handleSaveStatus(log, statusEdits[log.traineeId])}
                           disabled={savingId === log.traineeId}
                           className="btn btn-navy btn-sm"
                           style={{

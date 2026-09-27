@@ -33,25 +33,34 @@ export class HybridAttendanceService implements IAttendanceService {
     const normId = (traineeId || '').trim();
     if (!isSupabaseConfigured || !supabase) return await dexieAttendance.getTraineeAttendanceForDate(normId, date);
 
-    const { data } = await supabase
-      .from('attendance')
-      .select('*')
-      .ilike('trainee_id', normId)
-      .eq('date', date);
+    try {
+      const { data, error } = await supabase
+        .from('attendance')
+        .select('*')
+        .ilike('trainee_id', normId)
+        .eq('date', date);
 
-    if (!data || data.length === 0) {
+      if (error) {
+        console.warn('Supabase getTraineeAttendanceForDate error:', error);
+        return await dexieAttendance.getTraineeAttendanceForDate(normId, date);
+      }
+
+      if (!data || data.length === 0) {
+        return null;
+      }
+      const a = data[0];
+      return {
+        id: a.id,
+        traineeId: a.trainee_id,
+        date: a.date,
+        loginTime: a.login_time,
+        status: a.status as AttendanceStatus,
+        authenticationMethod: a.authentication_method,
+        createdAt: a.created_at,
+      };
+    } catch {
       return await dexieAttendance.getTraineeAttendanceForDate(normId, date);
     }
-    const a = data[0];
-    return {
-      id: a.id,
-      traineeId: a.trainee_id,
-      date: a.date,
-      loginTime: a.login_time,
-      status: a.status as AttendanceStatus,
-      authenticationMethod: a.authentication_method,
-      createdAt: a.created_at,
-    };
   }
 
   async logAttendance(
@@ -272,23 +281,31 @@ export class HybridAttendanceService implements IAttendanceService {
     prevStatus?: AttendanceStatus,
     existingLoginTime?: string
   ): Promise<{ success: boolean; error?: string }> {
+    const normTraineeId = (traineeId || '').trim();
     if (!isSupabaseConfigured || !supabase) {
-      return await dexieAttendance.updateTraineeAttendanceStatus(traineeId, date, newStatus, prevStatus, existingLoginTime);
+      return await dexieAttendance.updateTraineeAttendanceStatus(normTraineeId, date, newStatus, prevStatus, existingLoginTime);
     }
 
     try {
-      const existing = await this.getTraineeAttendanceForDate(traineeId, date);
+      // Direct query to Supabase to verify if a remote row actually exists
+      const { data: remoteRows } = await supabase
+        .from('attendance')
+        .select('*')
+        .ilike('trainee_id', normTraineeId)
+        .eq('date', date);
+
+      const remoteExisting = (remoteRows && remoteRows.length > 0) ? remoteRows[0] : null;
 
       let computedLoginTime = '-';
       if (newStatus === 'No Show') {
         computedLoginTime = '-';
-        // Delete sign_outs row for No Show
-        await supabase.from('sign_outs').delete().eq('trainee_id', traineeId).eq('date', date);
+        // Delete sign_outs row for No Show (case-insensitive)
+        await supabase.from('sign_outs').delete().ilike('trainee_id', normTraineeId).eq('date', date);
       } else if (newStatus === 'Late to Work') {
         computedLoginTime = 'Logged in after 7:30 am';
       } else if (newStatus === 'Present') {
-        const effectivePrevStatus = prevStatus || existing?.status;
-        const effectivePrevLoginTime = existingLoginTime || existing?.loginTime;
+        const effectivePrevStatus = prevStatus || remoteExisting?.status;
+        const effectivePrevLoginTime = existingLoginTime || remoteExisting?.login_time;
 
         if (effectivePrevStatus === 'Late to Work' && effectivePrevLoginTime && effectivePrevLoginTime !== '-' && effectivePrevLoginTime !== 'N/A') {
           computedLoginTime = effectivePrevLoginTime;
@@ -307,33 +324,45 @@ export class HybridAttendanceService implements IAttendanceService {
         computedLoginTime = `Manual (${newStatus})`;
       }
 
-      if (existing) {
+      if (remoteExisting) {
         const { error } = await supabase
           .from('attendance')
           .update({
             status: newStatus,
             login_time: computedLoginTime,
           })
-          .eq('id', existing.id);
+          .eq('id', remoteExisting.id);
 
         if (error) return { success: false, error: error.message };
       } else {
         const createdAt = new Date().toISOString();
 
         const { error } = await supabase.from('attendance').insert([{
-          trainee_id: traineeId,
+          trainee_id: normTraineeId,
           date,
           login_time: computedLoginTime,
           status: newStatus,
-          authentication_method: 'Password Fallback',
+          authentication_method: 'Manual Override',
           created_at: createdAt,
         }]);
 
-        if (error) return { success: false, error: error.message };
+        if (error) {
+          // If insert fails due to race condition or constraint, fallback to update by trainee_id and date
+          const { error: updateError } = await supabase
+            .from('attendance')
+            .update({
+              status: newStatus,
+              login_time: computedLoginTime,
+            })
+            .ilike('trainee_id', normTraineeId)
+            .eq('date', date);
+
+          if (updateError) return { success: false, error: updateError.message || error.message };
+        }
       }
 
       // Sync Dexie locally
-      await dexieAttendance.updateTraineeAttendanceStatus(traineeId, date, newStatus, prevStatus, existingLoginTime);
+      await dexieAttendance.updateTraineeAttendanceStatus(normTraineeId, date, newStatus, prevStatus, existingLoginTime);
 
       return { success: true };
     } catch (err: any) {
