@@ -175,6 +175,7 @@ export interface TraineeLogSummary {
   loginTime: string;
   signOutTime: string;
   allocationCount: number;
+  latestAllocationAircraft?: string | null;
   latestTaskCount: number | null;
   accountStatus: 'Active' | 'Disabled';
   passkeyRegistered: boolean;

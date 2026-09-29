@@ -171,8 +171,8 @@ export class HybridAttendanceService implements IAttendanceService {
     const { data: allTrainees } = await supabase.from('trainees').select('*');
     const { data: attendanceRecords } = await supabase.from('attendance').select('*').eq('date', targetDate);
     const { data: signOutRecords } = await supabase.from('sign_outs').select('*').eq('date', targetDate);
-    const { data: allAllocations } = await supabase.from('allocations').select('*').eq('date', targetDate);
-    const { data: allTaskCounts } = await supabase.from('task_counts').select('*').eq('date', targetDate);
+    const { data: allAllocations } = await supabase.from('allocations').select('*');
+    const { data: allTaskCounts } = await supabase.from('task_counts').select('*');
     const { data: allUsers } = await supabase.from('users').select('*');
     const { data: allPasskeys } = await supabase.from('passkey_credentials').select('*');
 
@@ -247,13 +247,25 @@ export class HybridAttendanceService implements IAttendanceService {
 
       const effectiveSignOutTime = status === 'No Show' ? '-' : signOutTime;
 
-      const allocations = (allAllocations || []).filter(
-        (al: any) => String(al.trainee_id || '').trim().toUpperCase() === normTraineeId
-      );
+      const traineeAllocations = (allAllocations || [])
+        .filter((al: any) => String(al.trainee_id || '').trim().toUpperCase() === normTraineeId)
+        .sort((a: any, b: any) => Number(b.timestamp) - Number(a.timestamp));
+
+      // Prioritize allocation on targetDate, otherwise fall back to latest overall allocation
+      const dateAllocation = traineeAllocations.find((al: any) => al.date === targetDate);
+      const activeAllocation = dateAllocation || (traineeAllocations.length > 0 ? traineeAllocations[0] : null);
+      const latestAircraft = activeAllocation
+        ? (activeAllocation.aircraft_registration || activeAllocation.aircraftRegistration || null)
+        : null;
+
       const traineeTasks = (allTaskCounts || [])
         .filter((tc: any) => String(tc.trainee_id || '').trim().toUpperCase() === normTraineeId)
         .sort((a: any, b: any) => Number(b.timestamp) - Number(a.timestamp));
-      const latestTask = traineeTasks.length > 0 ? traineeTasks[0].task_count : null;
+
+      // Prioritize task count on targetDate, otherwise fall back to latest overall task count
+      const dateTask = traineeTasks.find((tc: any) => tc.date === targetDate);
+      const activeTask = dateTask || (traineeTasks.length > 0 ? traineeTasks[0] : null);
+      const latestTask = activeTask ? activeTask.task_count : null;
 
       const user = (allUsers || []).find(
         (u: any) =>
@@ -272,7 +284,8 @@ export class HybridAttendanceService implements IAttendanceService {
         status,
         loginTime,
         signOutTime: effectiveSignOutTime,
-        allocationCount: allocations.length,
+        allocationCount: traineeAllocations.length,
+        latestAllocationAircraft: latestAircraft,
         latestTaskCount: latestTask,
         accountStatus: trainee.active ? 'Active' : 'Disabled',
         passkeyRegistered: passkeys.length > 0,

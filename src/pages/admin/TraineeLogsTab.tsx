@@ -304,13 +304,14 @@ export const TraineeLogsTab: React.FC<TraineeLogsTabProps> = ({ refreshTrigger }
       result = result.filter((l) => (l.batch || '').trim().toUpperCase() === norm);
     }
 
-    // 2. Search query (trainee name or staff no)
+    // 2. Search query (trainee name, staff no, or aircraft registration)
     if (searchQuery.trim()) {
       const q = searchQuery.trim().toLowerCase();
       result = result.filter(
         (l) =>
           (l.name || '').toLowerCase().includes(q) ||
-          String(l.traineeId || '').toLowerCase().includes(q)
+          String(l.traineeId || '').toLowerCase().includes(q) ||
+          (l.latestAllocationAircraft || '').toLowerCase().includes(q)
       );
     }
 
@@ -451,7 +452,7 @@ export const TraineeLogsTab: React.FC<TraineeLogsTabProps> = ({ refreshTrigger }
           <input
             type="text"
             className="form-control"
-            placeholder="Search trainee name or staff no..."
+            placeholder="Search trainee name, staff no, aircraft..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             style={{
@@ -697,20 +698,36 @@ export const TraineeLogsTab: React.FC<TraineeLogsTabProps> = ({ refreshTrigger }
                   <td style={{ textAlign: 'center' }}>
                     <button
                       onClick={() => openAllocationModal(log.traineeId, log.name)}
-                      className="btn btn-gold btn-sm"
+                      className={log.latestAllocationAircraft ? "btn btn-gold btn-sm" : "btn btn-outline btn-sm"}
+                      style={{
+                        minWidth: '95px',
+                        padding: '0.25rem 0.6rem',
+                        fontSize: '0.8rem',
+                        fontWeight: log.latestAllocationAircraft ? 700 : 500,
+                        color: log.latestAllocationAircraft ? undefined : '#64748B',
+                      }}
+                      title={log.latestAllocationAircraft ? `Current Aircraft: ${log.latestAllocationAircraft} (Click to view history)` : "No allocation submitted yet. Click to view history."}
                     >
                       <Compass size={13} />
-                      <span>Allocations ({log.allocationCount})</span>
+                      <span>{log.latestAllocationAircraft || '-'}</span>
                     </button>
                   </td>
 
                   <td style={{ textAlign: 'center' }}>
                     <button
                       onClick={() => openTaskModal(log.traineeId, log.name)}
-                      className="btn btn-navy btn-sm"
+                      className={log.latestTaskCount !== null ? "btn btn-navy btn-sm" : "btn btn-outline btn-sm"}
+                      style={{
+                        minWidth: '70px',
+                        padding: '0.25rem 0.6rem',
+                        fontSize: '0.8rem',
+                        fontWeight: log.latestTaskCount !== null ? 700 : 500,
+                        color: log.latestTaskCount !== null ? undefined : '#64748B',
+                      }}
+                      title={log.latestTaskCount !== null ? `Last Submitted: ${log.latestTaskCount} tasks (Click to view history)` : "No task count submitted yet. Click to view history."}
                     >
                       <CheckSquare size={13} />
-                      <span>Task Count ({log.latestTaskCount !== null ? log.latestTaskCount : '-'})</span>
+                      <span>{log.latestTaskCount !== null ? log.latestTaskCount : '-'}</span>
                     </button>
                   </td>
 

@@ -111,8 +111,8 @@ export class DexieAttendanceService implements IAttendanceService {
     });
     const attendanceRecords = await db.attendance.where('date').equals(targetDate).toArray();
     const signOutRecords = await db.signOuts.where('date').equals(targetDate).toArray();
-    const allAllocations = await db.allocations.where('date').equals(targetDate).toArray();
-    const allTaskCounts = await db.taskCounts.where('date').equals(targetDate).toArray();
+    const allAllocations = await db.allocations.toArray();
+    const allTaskCounts = await db.taskCounts.toArray();
     const allUsers = await db.users.toArray();
     const allPasskeys = await db.passkeyCredentials.toArray();
 
@@ -131,6 +131,7 @@ export class DexieAttendanceService implements IAttendanceService {
 
     for (let i = 0; i < allTrainees.length; i++) {
       const trainee = allTrainees[i];
+      const normTraineeId = String(trainee.traineeId || '').trim().toUpperCase();
       const att = attendanceMap.get(trainee.traineeId);
       const signOutTime = signOutMap.get(trainee.traineeId) || '-';
 
@@ -166,14 +167,25 @@ export class DexieAttendanceService implements IAttendanceService {
 
       const effectiveSignOutTime = status === 'No Show' ? '-' : signOutTime;
 
-      // Allocations for this trainee & date
-      const allocations = allAllocations.filter((al) => al.traineeId === trainee.traineeId);
-      
-      // Latest Task count for this date
-      const traineeTasks = allTaskCounts
-        .filter((tc) => tc.traineeId === trainee.traineeId)
+      // Allocations for this trainee
+      const traineeAllocations = allAllocations
+        .filter((al) => String(al.traineeId).trim().toUpperCase() === normTraineeId)
         .sort((a, b) => b.timestamp - a.timestamp);
-      const latestTask = traineeTasks.length > 0 ? traineeTasks[0].taskCount : null;
+
+      // Prioritize allocation on targetDate, otherwise fall back to latest overall allocation
+      const dateAllocation = traineeAllocations.find((al) => al.date === targetDate);
+      const activeAllocation = dateAllocation || (traineeAllocations.length > 0 ? traineeAllocations[0] : null);
+      const latestAircraft = activeAllocation ? activeAllocation.aircraftRegistration : null;
+
+      // Latest Task count for this trainee
+      const traineeTasks = allTaskCounts
+        .filter((tc) => String(tc.traineeId).trim().toUpperCase() === normTraineeId)
+        .sort((a, b) => b.timestamp - a.timestamp);
+
+      // Prioritize task count on targetDate, otherwise fall back to latest overall task count
+      const dateTask = traineeTasks.find((tc) => tc.date === targetDate);
+      const activeTask = dateTask || (traineeTasks.length > 0 ? traineeTasks[0] : null);
+      const latestTask = activeTask ? activeTask.taskCount : null;
 
       // User details
       const user = allUsers.find((u) => u.traineeId === trainee.traineeId || u.username === trainee.email);
@@ -187,7 +199,8 @@ export class DexieAttendanceService implements IAttendanceService {
         status,
         loginTime,
         signOutTime: effectiveSignOutTime,
-        allocationCount: allocations.length,
+        allocationCount: traineeAllocations.length,
+        latestAllocationAircraft: latestAircraft,
         latestTaskCount: latestTask,
         accountStatus: trainee.active ? 'Active' : 'Disabled',
         passkeyRegistered: passkeys.length > 0,
