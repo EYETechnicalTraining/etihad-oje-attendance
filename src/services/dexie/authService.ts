@@ -1,9 +1,7 @@
 import { db } from '../../db';
-import { User, Instructor, AttendanceStatus } from '../../types';
+import { User, Instructor } from '../../types';
 import { hashPassword, verifyPassword } from '../../utils/security';
-import { getUAEDateString, getUAETimeString, isWeekend, calculateAttendanceStatus } from '../../utils/timezone';
-import { holidayService } from '../hybridHolidayService';
-import { attendanceService } from './attendanceService';
+import { getUAEDateString, getUAETimeString } from '../../utils/timezone';
 import { IAuthService } from '../api';
 
 export class DexieAuthService implements IAuthService {
@@ -27,47 +25,6 @@ export class DexieAuthService implements IAuthService {
 
       const nowString = getUAEDateString();
       await db.users.update(user.id!, { lastLogin: nowString });
-
-      // Trainee Attendance Transition Rule:
-      // If a trainee logs into the portal and today is a workday (not weekend or holiday):
-      // If no attendance exists, or if current status is 'No Show', transition their status to 'Late to Work' (or 'Present' if <= 07:30 AM).
-      if (user.role === 'TRAINEE' && user.traineeId) {
-        try {
-          const normTraineeId = user.traineeId.trim();
-          if (!isWeekend(nowString)) {
-            const holidays = await holidayService.getAllHolidays();
-            const isHol = holidays.some((h: any) => h.date === nowString);
-            if (!isHol) {
-              const existingAtt = await attendanceService.getTraineeAttendanceForDate(normTraineeId, nowString);
-              if (!existingAtt || existingAtt.status === 'No Show') {
-                const now = new Date();
-                const calculatedStatus: AttendanceStatus = calculateAttendanceStatus(now);
-                const loginTime = getUAETimeString(now, true);
-                const createdAt = new Date().toISOString();
-
-                if (existingAtt && existingAtt.id) {
-                  await db.attendance.update(existingAtt.id, {
-                    status: calculatedStatus,
-                    loginTime,
-                    authenticationMethod: 'Password Fallback',
-                  });
-                } else {
-                  await db.attendance.add({
-                    traineeId: normTraineeId,
-                    date: nowString,
-                    loginTime,
-                    status: calculatedStatus,
-                    authenticationMethod: 'Password Fallback',
-                    createdAt,
-                  });
-                }
-              }
-            }
-          }
-        } catch (attErr) {
-          console.warn('Failed to auto-register attendance in Dexie on trainee login:', attErr);
-        }
-      }
 
       // Audit Log
       await db.auditLogs.add({

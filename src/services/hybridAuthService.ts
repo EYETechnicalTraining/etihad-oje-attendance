@@ -1,11 +1,8 @@
 import { authService as dexieAuth } from './dexie/authService';
-import { attendanceService as dexieAttendance } from './dexie/attendanceService';
 import { supabase, isSupabaseConfigured } from './supabase/client';
-import { db } from '../db';
-import { User, Instructor, AttendanceStatus } from '../types';
+import { User, Instructor } from '../types';
 import { hashPassword, verifyPassword } from '../utils/security';
-import { getUAEDateString, getUAETimeString, isWeekend, calculateAttendanceStatus } from '../utils/timezone';
-import { holidayService } from './hybridHolidayService';
+import { getUAEDateString } from '../utils/timezone';
 import { IAuthService } from './api';
 
 export class HybridAuthService implements IAuthService {
@@ -63,86 +60,6 @@ export class HybridAuthService implements IAuthService {
 
       const nowString = getUAEDateString();
       await supabase.from('users').update({ last_login: nowString }).eq('id', user.id);
-
-      // Trainee Attendance Transition Rule:
-      // If a trainee logs into the portal and today is a workday (not weekend or holiday):
-      // If no attendance exists, or if current status is 'No Show', transition their status to 'Late to Work' (or 'Present' if <= 07:30 AM).
-      if (user.role === 'TRAINEE' && user.trainee_id) {
-        try {
-          const normTraineeId = user.trainee_id.trim();
-          if (!isWeekend(nowString)) {
-            const holidays = await holidayService.getAllHolidays();
-            const isHol = holidays.some((h: any) => h.date === nowString);
-            if (!isHol) {
-              const existingAtt = await dexieAttendance.getTraineeAttendanceForDate(normTraineeId, nowString);
-              let currentAttStatus: AttendanceStatus | null = existingAtt ? existingAtt.status : null;
-              let existingAttId = existingAtt?.id;
-
-              if (isSupabaseConfigured && supabase) {
-                const { data: remoteAtt } = await supabase
-                  .from('attendance')
-                  .select('*')
-                  .ilike('trainee_id', normTraineeId)
-                  .eq('date', nowString);
-                if (remoteAtt && remoteAtt.length > 0) {
-                  currentAttStatus = remoteAtt[0].status as AttendanceStatus;
-                  existingAttId = remoteAtt[0].id;
-                }
-              }
-
-              if (!currentAttStatus || currentAttStatus === 'No Show') {
-                const now = new Date();
-                const calculatedStatus: AttendanceStatus = calculateAttendanceStatus(now);
-                const loginTime = getUAETimeString(now, true);
-                const createdAt = new Date().toISOString();
-
-                if (isSupabaseConfigured && supabase) {
-                  if (existingAttId) {
-                    await supabase
-                      .from('attendance')
-                      .update({
-                        status: calculatedStatus,
-                        login_time: loginTime,
-                        authentication_method: 'Password Fallback',
-                      })
-                      .eq('id', existingAttId);
-                  } else {
-                    await supabase.from('attendance').insert([{
-                      trainee_id: normTraineeId,
-                      date: nowString,
-                      login_time: loginTime,
-                      status: calculatedStatus,
-                      authentication_method: 'Password Fallback',
-                      created_at: createdAt,
-                    }]);
-                  }
-                }
-
-                // Sync locally in Dexie
-                const localRec = await dexieAttendance.getTraineeAttendanceForDate(normTraineeId, nowString);
-                if (localRec && localRec.id) {
-                  await db.attendance.update(localRec.id, {
-                    status: calculatedStatus,
-                    loginTime,
-                    authenticationMethod: 'Password Fallback',
-                  });
-                } else {
-                  await db.attendance.add({
-                    traineeId: normTraineeId,
-                    date: nowString,
-                    loginTime,
-                    status: calculatedStatus,
-                    authenticationMethod: 'Password Fallback',
-                    createdAt,
-                  });
-                }
-              }
-            }
-          }
-        } catch (attErr) {
-          console.warn('Failed to auto-register attendance on trainee login:', attErr);
-        }
-      }
 
       let resolvedRole = user.role;
       let staffNumber = user.trainee_id || '';
