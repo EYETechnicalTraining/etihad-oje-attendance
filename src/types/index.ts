@@ -11,7 +11,8 @@ export type AttendanceStatus =
   | 'Stand Down'
   | 'Weekend'
   | 'Holiday'
-  | 'N/A';
+  | 'N/A'
+  | 'Pending';
 
 export type InsideOutside = 'Inside' | 'Outside';
 

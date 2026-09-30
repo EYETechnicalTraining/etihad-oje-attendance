@@ -662,7 +662,7 @@ export const TraineeLogsTab: React.FC<TraineeLogsTabProps> = ({ refreshTrigger }
                             borderRadius: '4px',
                           }}
                           disabled={savingId === log.traineeId}
-                          value={statusEdits[log.traineeId] !== undefined ? statusEdits[log.traineeId] : log.status}
+                          value={statusEdits[log.traineeId] !== undefined ? statusEdits[log.traineeId] : (log.status === 'N/A' ? 'Pending' : log.status)}
                           onChange={(e) => handleStatusChange(log, e.target.value as AttendanceStatus)}
                         >
                           <option value="Present">Present</option>
@@ -673,6 +673,7 @@ export const TraineeLogsTab: React.FC<TraineeLogsTabProps> = ({ refreshTrigger }
                           <option value="Military Services">Military Services</option>
                           <option value="Training">Training</option>
                           <option value="Stand Down">Stand Down</option>
+                          <option value="Pending">Pending</option>
                         </select>
                         <button
                           onClick={() => handleSaveStatus(log, statusEdits[log.traineeId])}

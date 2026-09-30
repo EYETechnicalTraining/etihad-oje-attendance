@@ -363,27 +363,28 @@ body {
 }
 
 .badge-military {
-  background-color: #F1F5F9;
-  color: #334155;
-  border-color: #CBD5E1;
+  background-color: #F4F6EE;
+  color: #556B2F;
+  border-color: #CBD7A8;
 }
 
 .badge-training {
-  background-color: #EEF2FF;
-  color: #4338CA;
-  border-color: #C7D2FE;
+  background-color: #FFF7ED;
+  color: #EA580C;
+  border-color: #FDBA74;
 }
 
 .badge-standdown {
-  background-color: #FFF7ED;
-  color: #C2410C;
-  border-color: #FFEDD5;
+  background-color: #172554;
+  color: #FFFFFF;
+  border-color: #172554;
 }
 
+.badge-pending,
 .badge-na {
-  background-color: #F8FAFC;
-  color: #64748B;
-  border-color: #CBD5E1;
+  background-color: #000000;
+  color: #FFFFFF;
+  border-color: #000000;
 }
 
 .badge-holiday {

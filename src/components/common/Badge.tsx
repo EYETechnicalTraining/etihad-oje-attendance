@@ -108,11 +108,11 @@ export const Badge: React.FC<BadgeProps> = ({ status }) => {
     );
   }
 
-  if (status === 'N/A') {
+  if (status === 'Pending' || status === 'N/A') {
     return (
-      <span className="badge badge-na">
+      <span className="badge badge-pending">
         <Clock size={13} />
-        <span>N/A (Pending 08:00 AM)</span>
+        <span>PENDING</span>
       </span>
     );
   }

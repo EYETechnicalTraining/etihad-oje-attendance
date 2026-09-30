@@ -257,15 +257,27 @@ export async function generateMatrixExcelReport(options: ExcelExportOptions): Pr
     } else if (statusStr === 'No Show') {
       fgColor = 'FCE4D6'; // Light Red
       fontColor = 'B91C1C';
-    } else if (statusStr === 'Pending') {
-      fgColor = 'F8FAFC'; // Soft Slate Grey
-      fontColor = '64748B'; // Muted Slate
+    } else if (statusStr === 'Pending' || statusStr === 'N/A') {
+      fgColor = '000000'; // Black
+      fontColor = 'FFFFFF'; // White text
+    } else if (statusStr === 'Stand Down') {
+      fgColor = '172554'; // Dark Navy #172554
+      fontColor = 'FFFFFF'; // White text
+    } else if (statusStr === 'Military Services') {
+      fgColor = 'F4F6EE'; // Light Olive
+      fontColor = '556B2F'; // Olive
+    } else if (statusStr === 'Training') {
+      fgColor = 'FFF7ED'; // Light Orange
+      fontColor = 'C2410C'; // Orange
+    } else if (statusStr === 'Annual Leave') {
+      fgColor = 'F0F9FF'; // Light Blue
+      fontColor = '0369A1';
+    } else if (statusStr === 'Sick Leave') {
+      fgColor = 'FDF4FF'; // Light Magenta
+      fontColor = 'C026D3';
     } else if (statusStr === 'Holiday') {
       fgColor = 'FDF2F8'; // Light Pink
       fontColor = 'BE185D'; // Dark Pink/Magenta
-    } else if (['Annual Leave', 'Sick Leave', 'Military Services', 'Training', 'Stand Down'].includes(statusStr)) {
-      fgColor = 'D9E1F2'; // Light Blue/Purple accent
-      fontColor = '1F4E78';
     } else if (statusStr === 'Weekend') {
       fgColor = 'F2F2F2'; // Light Grey
       fontColor = '595959';
