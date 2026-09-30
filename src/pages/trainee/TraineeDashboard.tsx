@@ -6,6 +6,7 @@ import { allocationService } from '../../services/hybridAllocationService';
 import { taskService } from '../../services/hybridTaskService';
 import { settingsService } from '../../services/hybridSettingsService';
 import { emailService } from '../../services/emailService';
+import { hangarService } from '../../services/hybridHangarService';
 import { getDeviceLocation, checkGeofence } from '../../utils/geofence';
 import { getUAEDateString, getUAETimeString, formatDisplayDate, formatMediumDate } from '../../utils/timezone';
 import { Modal } from '../../components/common/Modal';
@@ -48,6 +49,9 @@ export const TraineeDashboard: React.FC<TraineeDashboardProps> = ({ currentUser 
   const [isRemarksModalOpen, setIsRemarksModalOpen] = useState(false);
   const [isChangePassOpen, setIsChangePassOpen] = useState(false);
 
+  // Available Facility Hangars for Allocation
+  const [availableHangars, setAvailableHangars] = useState<string[]>([]);
+
   // Form states
   const [allocationForm, setAllocationForm] = useState({
     location: '',
@@ -75,13 +79,14 @@ export const TraineeDashboard: React.FC<TraineeDashboardProps> = ({ currentUser 
     if (!currentUser.traineeId) return;
 
     const today = getUAEDateString();
-    const [t, rList, att, sOut, aList, tcList] = await Promise.all([
+    const [t, rList, att, sOut, aList, tcList, hList] = await Promise.all([
       traineeService.getTraineeById(currentUser.traineeId),
       traineeService.getRemarks(currentUser.traineeId),
       attendanceService.getTraineeAttendanceForDate(currentUser.traineeId, today),
       taskService.getSignOut(currentUser.traineeId, today),
       allocationService.getAllocations(currentUser.traineeId),
       taskService.getTaskCounts(currentUser.traineeId),
+      hangarService.getHangars(),
     ]);
 
     setTrainee(t);
@@ -90,6 +95,7 @@ export const TraineeDashboard: React.FC<TraineeDashboardProps> = ({ currentUser 
     setTodaySignOut(sOut);
     setAllocations(aList);
     setTaskCounts(tcList);
+    setAvailableHangars(hList);
   };
 
   useEffect(() => {
@@ -485,6 +491,7 @@ export const TraineeDashboard: React.FC<TraineeDashboardProps> = ({ currentUser 
             setAllocationError(null);
             setAllocationTab('form');
             setIsAllocationModalOpen(true);
+            hangarService.getHangars().then(setAvailableHangars).catch(() => {});
           }}
         >
           <div className="action-card-icon">
@@ -769,15 +776,23 @@ export const TraineeDashboard: React.FC<TraineeDashboardProps> = ({ currentUser 
           <form onSubmit={handleAllocationSubmit}>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem' }}>
               <div className="form-group">
-                <label className="form-label">Location / Hangar *</label>
-                <input
-                  type="text"
+                <label className="form-label">Hangar *</label>
+                <select
                   className="form-control"
-                  placeholder="e.g. Hangar 3 / Line Bay A"
                   value={allocationForm.location}
                   onChange={(e) => setAllocationForm({ ...allocationForm, location: e.target.value })}
                   required
-                />
+                >
+                  <option value="">-- Select Hangar --</option>
+                  {availableHangars.map((h) => (
+                    <option key={h} value={h}>
+                      {h}
+                    </option>
+                  ))}
+                  {allocationForm.location && !availableHangars.includes(allocationForm.location) && (
+                    <option value={allocationForm.location}>{allocationForm.location}</option>
+                  )}
+                </select>
               </div>
 
               <div className="form-group">

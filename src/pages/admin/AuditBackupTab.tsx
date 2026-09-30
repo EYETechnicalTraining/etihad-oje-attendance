@@ -6,6 +6,7 @@ import { traineeService } from '../../services/hybridTraineeService';
 import { attendanceService } from '../../services/hybridAttendanceService';
 import { settingsService, DEFAULT_GEOFENCE_SETTINGS } from '../../services/hybridSettingsService';
 import { emailService, EmailSettings, DEFAULT_EMAIL_SETTINGS } from '../../services/emailService';
+import { hangarService } from '../../services/hybridHangarService';
 import { getUAEDateString } from '../../utils/timezone';
 import { exportToCSV } from '../../utils/csv';
 import { generateMatrixExcelReport } from '../../utils/excelExporter';
@@ -24,6 +25,9 @@ import {
   Send,
   Clock,
   RotateCcw,
+  Building2,
+  Plus,
+  Trash2,
 } from 'lucide-react';
 
 interface AuditBackupTabProps {
@@ -49,6 +53,11 @@ export const AuditBackupTab: React.FC<AuditBackupTabProps> = ({ currentUser, ref
   const [showEmailGuide, setShowEmailGuide] = useState(false);
   const [testRecipientEmail, setTestRecipientEmail] = useState('');
 
+  // Hangars Management State
+  const [hangars, setHangars] = useState<string[]>([]);
+  const [newHangarName, setNewHangarName] = useState('');
+  const [hangarActionLoading, setHangarActionLoading] = useState(false);
+
   // Backup import state
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [importFile, setImportFile] = useState<File | null>(null);
@@ -66,9 +75,11 @@ export const AuditBackupTab: React.FC<AuditBackupTabProps> = ({ currentUser, ref
     const geo = await settingsService.getGeofenceSettings();
     const em = await emailService.getEmailSettings();
     const bList = await traineeService.getBatches();
+    const hList = await hangarService.getHangars();
     setGeofence(geo);
     setEmailConfig(em);
     setBatches(bList);
+    setHangars(hList);
   };
 
   const refreshAuditLogs = async () => {
@@ -138,6 +149,57 @@ export const AuditBackupTab: React.FC<AuditBackupTabProps> = ({ currentUser, ref
         type: 'error',
         text: res.error || 'Failed to save email settings.',
       });
+    }
+  };
+
+  const handleAddHangar = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const clean = newHangarName.trim();
+    if (!clean) return;
+    setHangarActionLoading(true);
+    setNotification(null);
+
+    const res = await hangarService.addHangar(clean);
+    setHangarActionLoading(false);
+
+    if (res.success && res.hangars) {
+      setHangars(res.hangars);
+      setNewHangarName('');
+      setNotification({ type: 'success', text: `Hangar "${clean}" successfully added.` });
+    } else {
+      setNotification({ type: 'error', text: res.error || 'Failed to add hangar.' });
+    }
+  };
+
+  const handleDeleteHangar = async (hangarName: string) => {
+    if (!window.confirm(`Are you sure you want to remove "${hangarName}" from the hangars list?`)) return;
+    setHangarActionLoading(true);
+    setNotification(null);
+
+    const res = await hangarService.deleteHangar(hangarName);
+    setHangarActionLoading(false);
+
+    if (res.success && res.hangars) {
+      setHangars(res.hangars);
+      setNotification({ type: 'success', text: `Hangar "${hangarName}" removed.` });
+    } else {
+      setNotification({ type: 'error', text: res.error || 'Failed to remove hangar.' });
+    }
+  };
+
+  const handleResetHangars = async () => {
+    if (!window.confirm('Reset hangars to the default Etihad Engineering facility list?')) return;
+    setHangarActionLoading(true);
+    setNotification(null);
+
+    const res = await hangarService.resetToDefaults();
+    setHangarActionLoading(false);
+
+    if (res.success && res.hangars) {
+      setHangars(res.hangars);
+      setNotification({ type: 'success', text: 'Facility hangars reset to default list.' });
+    } else {
+      setNotification({ type: 'error', text: res.error || 'Failed to reset hangars.' });
     }
   };
 
@@ -345,12 +407,12 @@ export const AuditBackupTab: React.FC<AuditBackupTabProps> = ({ currentUser, ref
       <div style={{ marginBottom: '1.25rem' }}>
         <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: '#0A192F' }}>
           {isMaster
-            ? 'Data Management, Geofence & Automated Outlook Email Dispatch'
+            ? 'Data Management, Geofence, Hangars & Automated Email Dispatch'
             : 'Attendance Matrix Excel Report Generator'}
         </h2>
         <p style={{ fontSize: '0.85rem', color: '#64748B' }}>
           {isMaster
-            ? "Configure automated 08:00 AM No-Show email notifications from your supervisor's Outlook email, set GPS Geofencing radii, and export custom matrix Excel reports."
+            ? "Configure automated No-Show and Late email notifications, set GPS Geofencing radii, manage facility hangars for trainee allocation, and export custom matrix Excel reports."
             : 'Generate and download comprehensive Matrix Excel reports for OJE Trainee Attendance across single dates or date ranges.'}
         </p>
       </div>
@@ -634,6 +696,98 @@ export const AuditBackupTab: React.FC<AuditBackupTabProps> = ({ currentUser, ref
             </button>
           </div>
         </form>
+      </div>
+
+      {/* SECTION 2.5: Facility Hangars Management Card */}
+      <div className="card" style={{ borderLeft: '5px solid #C5A059', marginBottom: '1.5rem' }}>
+        <div className="card-header">
+          <span className="card-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <Building2 size={20} color="#C5A059" />
+            <span>Facility Hangars &amp; Workstations (Allocation Dropdown)</span>
+          </span>
+          <span style={{ fontSize: '0.8rem', background: '#F1F5F9', padding: '0.25rem 0.65rem', borderRadius: '12px', fontWeight: 600, color: '#334155' }}>
+            Total Hangars: {hangars.length}
+          </span>
+        </div>
+        <p style={{ fontSize: '0.85rem', color: '#475569', marginBottom: '1.25rem' }}>
+          Manage the official list of Hangars and Workstations available in the Allocation form for trainees on mobile. If new hangars are built in the future, you can add them below and they will immediately appear in the trainee dropdown.
+        </p>
+
+        {/* Add Hangar Input & Button */}
+        <form onSubmit={handleAddHangar} style={{ display: 'flex', gap: '0.75rem', marginBottom: '1.25rem', flexWrap: 'wrap', alignItems: 'center' }}>
+          <div style={{ flex: '1 1 260px' }}>
+            <input
+              type="text"
+              className="form-control"
+              placeholder="e.g. Hangar 8, Hangar 6B, Paint Shop..."
+              value={newHangarName}
+              onChange={(e) => setNewHangarName(e.target.value)}
+              disabled={hangarActionLoading}
+            />
+          </div>
+          <button type="submit" className="btn btn-gold btn-md" disabled={hangarActionLoading || !newHangarName.trim()}>
+            <Plus size={16} />
+            <span>{hangarActionLoading ? 'Adding...' : 'Add Hangar'}</span>
+          </button>
+          <button
+            type="button"
+            className="btn btn-outline btn-md"
+            onClick={handleResetHangars}
+            disabled={hangarActionLoading}
+            title="Restore default facility hangars list"
+          >
+            <RotateCcw size={14} />
+            <span>Reset to Defaults</span>
+          </button>
+        </form>
+
+        {/* List of Current Hangars */}
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', maxHeight: '220px', overflowY: 'auto', padding: '0.75rem', background: '#F8FAFC', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
+          {hangars.length === 0 ? (
+            <div style={{ color: '#94A3B8', fontSize: '0.85rem', fontStyle: 'italic', padding: '0.5rem' }}>
+              No hangars configured. Click 'Reset to Defaults' to populate the initial list.
+            </div>
+          ) : (
+            hangars.map((h, idx) => (
+              <div
+                key={idx}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.5rem',
+                  padding: '0.4rem 0.75rem',
+                  background: '#FFFFFF',
+                  borderRadius: '6px',
+                  border: '1px solid #CBD5E1',
+                  boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+                  fontSize: '0.85rem',
+                  fontWeight: 600,
+                  color: '#0A192F',
+                }}
+              >
+                <span>{h}</span>
+                <button
+                  type="button"
+                  onClick={() => handleDeleteHangar(h)}
+                  disabled={hangarActionLoading}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    cursor: 'pointer',
+                    color: '#DC2626',
+                    display: 'flex',
+                    alignItems: 'center',
+                    padding: '2px',
+                    borderRadius: '4px',
+                  }}
+                  title={`Remove ${h}`}
+                >
+                  <Trash2 size={13} />
+                </button>
+              </div>
+            ))
+          )}
+        </div>
       </div>
     </>
   )}
