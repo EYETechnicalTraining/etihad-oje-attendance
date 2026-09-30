@@ -172,18 +172,42 @@ export const AuditBackupTab: React.FC<AuditBackupTabProps> = ({ currentUser, ref
   };
 
   const handleDeleteHangar = async (hangarName: string) => {
-    if (!window.confirm(`Are you sure you want to remove "${hangarName}" from the hangars list?`)) return;
-    setHangarActionLoading(true);
     setNotification(null);
+    setHangarActionLoading(true);
+
+    // Optimistically update React state immediately
+    const updated = hangars.filter((h) => h.toLowerCase() !== hangarName.toLowerCase());
+    setHangars(updated);
 
     const res = await hangarService.deleteHangar(hangarName);
     setHangarActionLoading(false);
 
-    if (res.success && res.hangars) {
+    if (res.success && res.hangars !== undefined) {
       setHangars(res.hangars);
       setNotification({ type: 'success', text: `Hangar "${hangarName}" removed.` });
     } else {
       setNotification({ type: 'error', text: res.error || 'Failed to remove hangar.' });
+      const fresh = await hangarService.getHangars();
+      setHangars(fresh);
+    }
+  };
+
+  const handleClearAllHangars = async () => {
+    if (!window.confirm('Are you sure you want to remove ALL hangars and start with an empty list?')) return;
+    setNotification(null);
+    setHangarActionLoading(true);
+    setHangars([]);
+
+    const res = await hangarService.clearAllHangars();
+    setHangarActionLoading(false);
+
+    if (res.success) {
+      setHangars([]);
+      setNotification({ type: 'success', text: 'All hangars removed. The hangars list is now empty.' });
+    } else {
+      setNotification({ type: 'error', text: res.error || 'Failed to clear hangars.' });
+      const fresh = await hangarService.getHangars();
+      setHangars(fresh);
     }
   };
 
@@ -739,13 +763,26 @@ export const AuditBackupTab: React.FC<AuditBackupTabProps> = ({ currentUser, ref
             <RotateCcw size={14} />
             <span>Reset to Defaults</span>
           </button>
+          {hangars.length > 0 && (
+            <button
+              type="button"
+              className="btn btn-outline btn-md"
+              style={{ color: '#DC2626', borderColor: '#FCA5A5', backgroundColor: '#FEF2F2' }}
+              onClick={handleClearAllHangars}
+              disabled={hangarActionLoading}
+              title="Remove all hangars and keep the list empty"
+            >
+              <Trash2 size={14} />
+              <span>Clear All</span>
+            </button>
+          )}
         </form>
 
         {/* List of Current Hangars */}
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', maxHeight: '220px', overflowY: 'auto', padding: '0.75rem', background: '#F8FAFC', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
           {hangars.length === 0 ? (
-            <div style={{ color: '#94A3B8', fontSize: '0.85rem', fontStyle: 'italic', padding: '0.5rem' }}>
-              No hangars configured. Click 'Reset to Defaults' to populate the initial list.
+            <div style={{ color: '#64748B', fontSize: '0.85rem', fontStyle: 'italic', padding: '0.5rem' }}>
+              No hangars added yet. Use the field above to add your facility hangars.
             </div>
           ) : (
             hangars.map((h, idx) => (

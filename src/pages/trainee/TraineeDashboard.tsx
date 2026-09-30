@@ -783,7 +783,9 @@ export const TraineeDashboard: React.FC<TraineeDashboardProps> = ({ currentUser 
                   onChange={(e) => setAllocationForm({ ...allocationForm, location: e.target.value })}
                   required
                 >
-                  <option value="">-- Select Hangar --</option>
+                  <option value="">
+                    {availableHangars.length === 0 ? '-- No Hangars Added by Master Yet --' : '-- Select Hangar --'}
+                  </option>
                   {availableHangars.map((h) => (
                     <option key={h} value={h}>
                       {h}
