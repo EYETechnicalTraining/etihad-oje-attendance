@@ -9,6 +9,7 @@ import {
 } from '../../utils/timezone';
 import { IAttendanceService } from '../api';
 import { holidayService } from '../hybridHolidayService';
+import { isPendingStatus, isNoShowStatus } from '../../utils/statusUtils';
 
 export class DexieAttendanceService implements IAttendanceService {
   async getDailyAttendance(date: string): Promise<Attendance[]> {
@@ -33,7 +34,17 @@ export class DexieAttendanceService implements IAttendanceService {
       const today = getUAEDateString();
       const existing = await this.getTraineeAttendanceForDate(traineeId, today);
 
-      if (existing && existing.status !== 'No Show') {
+      const isPending = isPendingStatus(existing?.status);
+      const isNoShow = isNoShowStatus(existing?.status);
+
+      if (
+        existing &&
+        !isPending &&
+        !isNoShow &&
+        existing.loginTime &&
+        existing.loginTime !== '-' &&
+        !existing.loginTime.toLowerCase().includes('pending')
+      ) {
         return {
           success: false,
           error: `Attendance already registered for today (${today}) at ${existing.loginTime}.`,
@@ -226,9 +237,9 @@ export class DexieAttendanceService implements IAttendanceService {
       const timeStr = getUAETimeString(now, true);
 
       let computedLoginTime = '-';
-      if (newStatus === 'No Show') {
+      if (newStatus === 'No Show' || newStatus === 'Pending' || newStatus === 'N/A' || isPendingStatus(newStatus)) {
         computedLoginTime = '-';
-        // Clear sign out record for No Show (case-insensitive)
+        // Clear sign out record for No Show / Pending (case-insensitive)
         const allSignOuts = await db.signOuts.where('date').equals(date).toArray();
         const toDelete = allSignOuts.filter(
           (s) => String(s.traineeId).trim().toUpperCase() === normTraineeId.toUpperCase()

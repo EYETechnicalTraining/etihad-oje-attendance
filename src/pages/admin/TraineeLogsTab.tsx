@@ -130,7 +130,7 @@ export const TraineeLogsTab: React.FC<TraineeLogsTabProps> = ({ refreshTrigger }
     let newLoginTime = existingLoginTime;
     let newSignOutTime = log.signOutTime;
 
-    if (targetStatus === 'No Show') {
+    if (targetStatus === 'No Show' || targetStatus === 'Pending' || targetStatus === 'N/A') {
       newLoginTime = '-';
       newSignOutTime = '-';
     } else if (targetStatus === 'Late to Work') {

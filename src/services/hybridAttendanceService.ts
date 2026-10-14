@@ -11,6 +11,7 @@ import {
 } from '../utils/timezone';
 import { IAttendanceService } from './api';
 import { holidayService } from './hybridHolidayService';
+import { isPendingStatus, isNoShowStatus } from '../utils/statusUtils';
 
 export class HybridAttendanceService implements IAttendanceService {
   async getDailyAttendance(date: string): Promise<Attendance[]> {
@@ -74,7 +75,18 @@ export class HybridAttendanceService implements IAttendanceService {
       const today = getUAEDateString();
       const existing = await this.getTraineeAttendanceForDate(normTraineeId, today);
 
-      if (existing && existing.status !== 'No Show') {
+      const isPending = isPendingStatus(existing?.status);
+      const isNoShow = isNoShowStatus(existing?.status);
+
+      // Trainees who are Pending or No Show (or missing loginTime or loginTime with 'pending') are ALWAYS permitted to log attendance!
+      if (
+        existing &&
+        !isPending &&
+        !isNoShow &&
+        existing.loginTime &&
+        existing.loginTime !== '-' &&
+        !existing.loginTime.toLowerCase().includes('pending')
+      ) {
         return {
           success: false,
           error: `Attendance already registered for today (${today}) at ${existing.loginTime}.`,
@@ -320,10 +332,19 @@ export class HybridAttendanceService implements IAttendanceService {
       const remoteExisting = (remoteRows && remoteRows.length > 0) ? remoteRows[0] : null;
 
       let computedLoginTime = '-';
-      if (newStatus === 'No Show') {
+      if (newStatus === 'No Show' || newStatus === 'Pending' || newStatus === 'N/A' || isPendingStatus(newStatus)) {
         computedLoginTime = '-';
-        // Delete sign_outs row for No Show (case-insensitive)
+        // Delete sign_outs row for No Show / Pending (case-insensitive)
         await supabase.from('sign_outs').delete().ilike('trainee_id', normTraineeId).eq('date', date);
+        try {
+          const allSignOuts = await db.signOuts.where('date').equals(date).toArray();
+          const toDelete = allSignOuts.filter(
+            (s) => String(s.traineeId).trim().toUpperCase() === normTraineeId.toUpperCase()
+          );
+          for (const s of toDelete) {
+            if (s.id) await db.signOuts.delete(s.id);
+          }
+        } catch (_) {}
       } else if (newStatus === 'Late to Work') {
         computedLoginTime = 'Logged in after 7:30 am';
       } else if (newStatus === 'Present') {

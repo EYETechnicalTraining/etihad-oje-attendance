@@ -9,6 +9,7 @@ import { emailService } from '../../services/emailService';
 import { hangarService } from '../../services/hybridHangarService';
 import { getDeviceLocation, checkGeofence } from '../../utils/geofence';
 import { getUAEDateString, getUAETimeString, formatDisplayDate, formatMediumDate } from '../../utils/timezone';
+import { isPendingStatus, isNoShowStatus } from '../../utils/statusUtils';
 import { Modal } from '../../components/common/Modal';
 import { Notification } from '../../components/common/Notification';
 import { Badge } from '../../components/common/Badge';
@@ -97,6 +98,15 @@ export const TraineeDashboard: React.FC<TraineeDashboardProps> = ({ currentUser 
     setTaskCounts(tcList);
     setAvailableHangars(hList);
   };
+
+  const isAttendanceLogged = Boolean(
+    todayAttendance &&
+    !isPendingStatus(todayAttendance.status) &&
+    !isNoShowStatus(todayAttendance.status) &&
+    todayAttendance.loginTime &&
+    todayAttendance.loginTime !== '-' &&
+    !todayAttendance.loginTime.toLowerCase().includes('pending')
+  );
 
   useEffect(() => {
     loadData();
@@ -318,7 +328,7 @@ export const TraineeDashboard: React.FC<TraineeDashboardProps> = ({ currentUser 
   // Daily Sign-Out with Daily Sign Out Geofence Check
   const handleSignOutSubmit = async () => {
     if (!trainee) return;
-    if (!todayAttendance || todayAttendance.status === 'No Show') {
+    if (!isAttendanceLogged) {
       const errMsg = '🛑 Daily Sign-Out is blocked: No active attendance found for today. Daily Sign-Out is only allowed for trainees who have logged attendance (Present or Late to Work). If you arrived late, please log your attendance first.';
       setSignOutError(errMsg);
       setNotification({ type: 'error', text: errMsg });
@@ -459,24 +469,26 @@ export const TraineeDashboard: React.FC<TraineeDashboardProps> = ({ currentUser 
             setIsAttendanceModalOpen(true);
           }}
           style={{
-            borderColor: todayAttendance && todayAttendance.status !== 'No Show' ? '#10B981' : '#C5A059',
-            backgroundColor: todayAttendance && todayAttendance.status !== 'No Show' ? '#F0FDF4' : '#FFFFFF',
+            borderColor: isAttendanceLogged ? '#10B981' : '#C5A059',
+            backgroundColor: isAttendanceLogged ? '#F0FDF4' : '#FFFFFF',
           }}
         >
           <div
             className="action-card-icon"
             style={{
-              background: todayAttendance && todayAttendance.status !== 'No Show' ? '#DCFCE7' : '#F4EBE1',
-              color: todayAttendance && todayAttendance.status !== 'No Show' ? '#047857' : '#0A192F',
+              background: isAttendanceLogged ? '#DCFCE7' : '#F4EBE1',
+              color: isAttendanceLogged ? '#047857' : '#0A192F',
             }}
           >
             <CalendarCheck size={26} />
           </div>
           <div className="action-card-title">ATTENDANCE</div>
           <div style={{ marginTop: '0.5rem', fontSize: '0.8rem', fontWeight: 600 }}>
-            {todayAttendance && todayAttendance.status !== 'No Show' ? (
+            {isAttendanceLogged && todayAttendance ? (
               <Badge status={todayAttendance.status} />
-            ) : todayAttendance?.status === 'No Show' ? (
+            ) : isPendingStatus(todayAttendance?.status) ? (
+              <span style={{ color: '#D97706' }}>Pending (Tap to Log Attendance)</span>
+            ) : isNoShowStatus(todayAttendance?.status) ? (
               <span style={{ color: '#DC2626' }}>No Show (Tap to Check In Late)</span>
             ) : (
               <span style={{ color: '#64748B' }}>Tap to Log Attendance</span>
@@ -548,7 +560,7 @@ export const TraineeDashboard: React.FC<TraineeDashboardProps> = ({ currentUser 
           className="action-card"
           onClick={() => {
             setSignOutError(null);
-            if (!todayAttendance || todayAttendance.status === 'No Show') {
+            if (!isAttendanceLogged) {
               setSignOutError(
                 '🛑 Daily Sign-Out is blocked: No active attendance found for today. Daily Sign-Out is only allowed for trainees who have logged attendance (Present or Late to Work). If you arrived late, please log your attendance first.'
               );
@@ -556,24 +568,24 @@ export const TraineeDashboard: React.FC<TraineeDashboardProps> = ({ currentUser 
             setIsSignOutModalOpen(true);
           }}
           style={{
-            borderColor: todaySignOut ? '#047857' : (!todayAttendance || todayAttendance.status === 'No Show') ? '#FCA5A5' : '#E2E8F0',
-            backgroundColor: todaySignOut ? '#F0FDF4' : (!todayAttendance || todayAttendance.status === 'No Show') ? '#FFF5F5' : '#FFFFFF',
+            borderColor: todaySignOut ? '#047857' : (!isAttendanceLogged) ? '#FCA5A5' : '#E2E8F0',
+            backgroundColor: todaySignOut ? '#F0FDF4' : (!isAttendanceLogged) ? '#FFF5F5' : '#FFFFFF',
           }}
         >
           <div
             className="action-card-icon"
             style={{
-              background: todaySignOut ? '#DCFCE7' : (!todayAttendance || todayAttendance.status === 'No Show') ? '#FEE2E2' : '#FEF2F2',
+              background: todaySignOut ? '#DCFCE7' : (!isAttendanceLogged) ? '#FEE2E2' : '#FEF2F2',
               color: todaySignOut ? '#047857' : '#B91C1C',
             }}
           >
             <LogOut size={26} />
           </div>
           <div className="action-card-title">DAILY SIGN-OUT</div>
-          <div style={{ marginTop: '0.35rem', fontSize: '0.78rem', fontWeight: 600, color: todaySignOut ? '#047857' : (!todayAttendance || todayAttendance.status === 'No Show') ? '#DC2626' : '#64748B' }}>
+          <div style={{ marginTop: '0.35rem', fontSize: '0.78rem', fontWeight: 600, color: todaySignOut ? '#047857' : (!isAttendanceLogged) ? '#DC2626' : '#64748B' }}>
             {todaySignOut
               ? `Signed Out at ${todaySignOut.signOutTime}`
-              : (!todayAttendance || todayAttendance.status === 'No Show')
+              : (!isAttendanceLogged)
               ? 'Blocked: Log Attendance First'
               : 'Tap to Sign Out for Today'}
           </div>
@@ -606,7 +618,7 @@ export const TraineeDashboard: React.FC<TraineeDashboardProps> = ({ currentUser 
             {formatDisplayDate(getUAEDateString())}
           </div>
 
-          {todayAttendance && todayAttendance.status !== 'No Show' ? (
+          {isAttendanceLogged && todayAttendance ? (
             <div style={{ background: '#ECFDF5', border: '1px solid #A7F3D0', padding: '1.25rem', borderRadius: '10px', marginTop: '1rem' }}>
               <CheckCircle2 size={32} color="#047857" style={{ margin: '0 auto 0.5rem auto' }} />
               <h4 style={{ fontSize: '1.1rem', fontWeight: 800, color: '#047857' }}>Attendance Successfully Registered</h4>
@@ -617,7 +629,12 @@ export const TraineeDashboard: React.FC<TraineeDashboardProps> = ({ currentUser 
             </div>
           ) : (
             <div>
-              {todayAttendance?.status === 'No Show' && (
+              {isPendingStatus(todayAttendance?.status) && (
+                <div style={{ background: '#FEF3C7', border: '1px solid #FCD34D', color: '#92400E', padding: '0.75rem 1rem', borderRadius: '8px', marginBottom: '1.25rem', fontSize: '0.85rem', textAlign: 'left' }}>
+                  <strong>⚠️ Status Notice:</strong> Your attendance status is currently <strong>Pending</strong> for today. Logging attendance below will record your timestamp and update your status.
+                </div>
+              )}
+              {isNoShowStatus(todayAttendance?.status) && (
                 <div style={{ background: '#FEF2F2', border: '1px solid #FCA5A5', color: '#991B1B', padding: '0.75rem 1rem', borderRadius: '8px', marginBottom: '1.25rem', fontSize: '0.85rem', textAlign: 'left' }}>
                   <strong>⚠️ Status Notice:</strong> You are currently registered as <strong>No Show</strong> for today. Logging attendance below will verify your presence and update your status to <strong>Late to Work</strong>.
                 </div>
@@ -1054,7 +1071,7 @@ export const TraineeDashboard: React.FC<TraineeDashboardProps> = ({ currentUser 
                 Time: <strong>{todaySignOut.signOutTime}</strong>
               </div>
             </div>
-          ) : (!todayAttendance || todayAttendance.status === 'No Show') ? (
+          ) : (!isAttendanceLogged) ? (
             <div style={{ padding: '0.5rem 0' }}>
               <div style={{ background: '#FEF2F2', border: '1px solid #FCA5A5', color: '#991B1B', padding: '1rem', borderRadius: '8px', marginBottom: '1.25rem', fontSize: '0.88rem', textAlign: 'left', lineHeight: 1.5 }}>
                 <div style={{ fontWeight: 800, fontSize: '0.95rem', marginBottom: '0.35rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
@@ -1062,7 +1079,9 @@ export const TraineeDashboard: React.FC<TraineeDashboardProps> = ({ currentUser 
                 </div>
                 Daily Sign-Out is only permitted for trainees who have logged attendance for today (with status <strong>Present</strong> or <strong>Late to Work</strong>).
                 <br /><br />
-                {todayAttendance?.status === 'No Show' ? (
+                {isPendingStatus(todayAttendance?.status) ? (
+                  <span>Your current status is <strong>Pending</strong>. Please log your attendance first, which will unlock sign-out.</span>
+                ) : isNoShowStatus(todayAttendance?.status) ? (
                   <span>Your current status is <strong>No Show</strong>. Please log your attendance first to change your status to <strong>Late to Work</strong>, which will unlock sign-out.</span>
                 ) : (
                   <span>You have not recorded attendance yet for today. Please log your attendance first.</span>
