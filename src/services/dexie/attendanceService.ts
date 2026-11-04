@@ -23,7 +23,35 @@ export class DexieAttendanceService implements IAttendanceService {
       .equals(date)
       .and((a) => (a.traineeId || '').trim().toUpperCase() === normId)
       .first();
-    return record || null;
+
+    const past8AM = isPastCutoffTime(date);
+    const holidays = await holidayService.getAllHolidays();
+    const isHolidayDate = holidays.some((h) => h.date === date);
+    const isWeekendDay = isWeekend(date);
+
+    if (!record) {
+      if (past8AM && !isWeekendDay && !isHolidayDate) {
+        return {
+          traineeId: normId,
+          date,
+          loginTime: '-',
+          status: 'No Show',
+          authenticationMethod: 'Manual Override',
+          createdAt: new Date().toISOString()
+        };
+      }
+      return null;
+    }
+
+    if (past8AM && !isWeekendDay && !isHolidayDate && isPendingStatus(record.status)) {
+      if (record.id) {
+        await db.attendance.update(record.id, { status: 'No Show', loginTime: '-' });
+      }
+      record.status = 'No Show';
+      record.loginTime = '-';
+    }
+
+    return record;
   }
 
   async logAttendance(
@@ -53,7 +81,8 @@ export class DexieAttendanceService implements IAttendanceService {
 
       const now = new Date();
       const loginTime = getUAETimeString(now, true);
-      const status: AttendanceStatus = calculateAttendanceStatus(now);
+      const calculatedStatus: AttendanceStatus = calculateAttendanceStatus(now);
+      const status: AttendanceStatus = (existing && isNoShow) ? 'Late to Work' : calculatedStatus;
       const createdAt = new Date().toISOString();
 
       if (existing && existing.id) {
@@ -150,8 +179,13 @@ export class DexieAttendanceService implements IAttendanceService {
       let loginTime = '-';
 
       if (att) {
-        status = att.status;
-        loginTime = att.loginTime;
+        if (isPendingStatus(att.status) && past8AM && !isWeekendDay && !isHolidayDate) {
+          status = 'No Show';
+          loginTime = '-';
+        } else {
+          status = att.status;
+          loginTime = att.loginTime;
+        }
       } else if (isWeekendDay) {
         status = 'Weekend';
       } else if (isHolidayDate) {

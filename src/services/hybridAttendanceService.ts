@@ -46,10 +46,52 @@ export class HybridAttendanceService implements IAttendanceService {
         return await dexieAttendance.getTraineeAttendanceForDate(normId, date);
       }
 
+      const past8AM = isPastCutoffTime(date);
+      const holidays = await holidayService.getAllHolidays();
+      const isHolidayDate = holidays.some((h) => h.date === date);
+      const isWeekendDay = isWeekend(date);
+
       if (!data || data.length === 0) {
+        // If past 8:00 AM cutoff on a working day and trainee has not logged in, auto-create No Show
+        if (past8AM && !isWeekendDay && !isHolidayDate) {
+          try {
+            await supabase.from('attendance').upsert([{
+              trainee_id: normId,
+              date: date,
+              login_time: '-',
+              status: 'No Show',
+              authentication_method: 'Manual Override',
+              created_at: new Date().toISOString()
+            }], { onConflict: 'trainee_id,date' });
+          } catch (_) {}
+
+          return {
+            traineeId: normId,
+            date,
+            loginTime: '-',
+            status: 'No Show',
+            authenticationMethod: 'Manual Override',
+            createdAt: new Date().toISOString()
+          };
+        }
         return null;
       }
+
       const a = data[0];
+
+      // If record exists but is pending after 8:00 AM cutoff on a working day, auto-convert to No Show
+      if (past8AM && !isWeekendDay && !isHolidayDate && isPendingStatus(a.status)) {
+        try {
+          await supabase.from('attendance').update({
+            status: 'No Show',
+            login_time: '-',
+            authentication_method: 'Manual Override'
+          }).eq('id', a.id);
+        } catch (_) {}
+        a.status = 'No Show';
+        a.login_time = '-';
+      }
+
       return {
         id: a.id,
         traineeId: a.trainee_id,
@@ -95,7 +137,9 @@ export class HybridAttendanceService implements IAttendanceService {
 
       const now = new Date();
       const loginTime = getUAETimeString(now, true);
-      const status: AttendanceStatus = calculateAttendanceStatus(now);
+      const calculatedStatus: AttendanceStatus = calculateAttendanceStatus(now);
+      // If the trainee was previously marked as No Show or Pending after cutoff, checking in registers them as 'Late to Work'!
+      const status: AttendanceStatus = (existing && isNoShow) ? 'Late to Work' : calculatedStatus;
       const createdAt = new Date().toISOString();
 
       if (existing) {
@@ -220,6 +264,7 @@ export class HybridAttendanceService implements IAttendanceService {
     const isWeekendDay = isWeekend(targetDate);
 
     const logs: TraineeLogSummary[] = [];
+    const pendingToNoShowUpsert: any[] = [];
 
     for (let i = 0; i < sortedTrainees.length; i++) {
       const trainee = sortedTrainees[i];
@@ -231,8 +276,22 @@ export class HybridAttendanceService implements IAttendanceService {
       let loginTime = '-';
 
       if (att) {
-        status = att.status as AttendanceStatus;
-        loginTime = att.login_time;
+        // If an attendance row exists but is pending after 8:00 AM cutoff on a working day, convert to No Show!
+        if (isPendingStatus(att.status) && past8AM && !isWeekendDay && !isHolidayDate) {
+          status = 'No Show';
+          loginTime = '-';
+          pendingToNoShowUpsert.push({
+            id: att.id,
+            trainee_id: trainee.trainee_id,
+            date: targetDate,
+            status: 'No Show',
+            login_time: '-',
+            authentication_method: 'Manual Override'
+          });
+        } else {
+          status = att.status as AttendanceStatus;
+          loginTime = att.login_time;
+        }
       } else if (isWeekendDay) {
         status = 'Weekend';
       } else if (isHolidayDate) {
@@ -242,6 +301,13 @@ export class HybridAttendanceService implements IAttendanceService {
           status = 'N/A'; // Pending 08:00 AM cutoff
         } else {
           status = 'No Show'; // After 08:00 AM cutoff
+          pendingToNoShowUpsert.push({
+            trainee_id: trainee.trainee_id,
+            date: targetDate,
+            status: 'No Show',
+            login_time: '-',
+            authentication_method: 'Manual Override'
+          });
         }
       }
 
@@ -304,6 +370,49 @@ export class HybridAttendanceService implements IAttendanceService {
         lastPasswordChange: user?.last_password_change || null,
         username: user?.username || trainee.email,
       });
+    }
+
+    // Persist pending to No Show in Supabase and Dexie asynchronously
+    if (pendingToNoShowUpsert.length > 0) {
+      if (isSupabaseConfigured && supabase) {
+        const createdAt = new Date().toISOString();
+        const upsertRows = pendingToNoShowUpsert.map(p => ({
+          ...(p.id ? { id: p.id } : {}),
+          trainee_id: p.trainee_id,
+          date: p.date,
+          status: 'No Show',
+          login_time: '-',
+          authentication_method: 'Manual Override',
+          created_at: createdAt
+        }));
+        (async () => {
+          try {
+            const { error } = await supabase.from('attendance').upsert(upsertRows, { onConflict: 'trainee_id,date' });
+            if (error) console.warn('Automated No Show Supabase upsert error:', error);
+          } catch (err) {
+            console.warn('Automated No Show error:', err);
+          }
+        })();
+      }
+
+      for (const p of pendingToNoShowUpsert) {
+        try {
+          dexieAttendance.getTraineeAttendanceForDate(p.trainee_id, targetDate).then(localRec => {
+            if (localRec && localRec.id) {
+              db.attendance.update(localRec.id, { status: 'No Show', loginTime: '-' });
+            } else if (!localRec) {
+              db.attendance.add({
+                traineeId: p.trainee_id,
+                date: targetDate,
+                loginTime: '-',
+                status: 'No Show',
+                authenticationMethod: 'Manual Override',
+                createdAt: new Date().toISOString()
+              });
+            }
+          }).catch(() => {});
+        } catch (_) {}
+      }
     }
 
     return logs;
