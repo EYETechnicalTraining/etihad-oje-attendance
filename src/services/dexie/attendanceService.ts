@@ -24,13 +24,15 @@ export class DexieAttendanceService implements IAttendanceService {
       .and((a) => (a.traineeId || '').trim().toUpperCase() === normId)
       .first();
 
-    const past8AM = isPastCutoffTime(date);
+    const todayString = getUAEDateString();
+    const isToday = date === todayString;
+    const past8AMToday = isToday && isPastCutoffTime(date);
     const holidays = await holidayService.getAllHolidays();
     const isHolidayDate = holidays.some((h) => h.date === date);
     const isWeekendDay = isWeekend(date);
 
     if (!record) {
-      if (past8AM && !isWeekendDay && !isHolidayDate) {
+      if (past8AMToday && !isWeekendDay && !isHolidayDate) {
         return {
           traineeId: normId,
           date,
@@ -41,14 +43,6 @@ export class DexieAttendanceService implements IAttendanceService {
         };
       }
       return null;
-    }
-
-    if (past8AM && !isWeekendDay && !isHolidayDate && isPendingStatus(record.status)) {
-      if (record.id) {
-        await db.attendance.update(record.id, { status: 'No Show', loginTime: '-' });
-      }
-      record.status = 'No Show';
-      record.loginTime = '-';
     }
 
     return record;
@@ -162,7 +156,9 @@ export class DexieAttendanceService implements IAttendanceService {
     const signOutMap = new Map<string, string>();
     signOutRecords.forEach((s) => signOutMap.set(s.traineeId, s.signOutTime));
 
-    const past8AM = isPastCutoffTime(targetDate);
+    const todayString = getUAEDateString();
+    const isToday = targetDate === todayString;
+    const past8AMToday = isToday && isPastCutoffTime(targetDate);
     const holidays = await holidayService.getAllHolidays();
     const isHolidayDate = holidays.some((h) => h.date === targetDate);
     const isWeekendDay = isWeekend(targetDate);
@@ -175,27 +171,24 @@ export class DexieAttendanceService implements IAttendanceService {
       const att = attendanceMap.get(trainee.traineeId);
       const signOutTime = signOutMap.get(trainee.traineeId) || '-';
 
-      let status: AttendanceStatus = 'No Show';
+      let status: AttendanceStatus = 'Pending';
       let loginTime = '-';
 
       if (att) {
-        if (isPendingStatus(att.status) && past8AM && !isWeekendDay && !isHolidayDate) {
-          status = 'No Show';
-          loginTime = '-';
-        } else {
-          status = att.status;
-          loginTime = att.loginTime;
-        }
+        status = att.status;
+        loginTime = att.loginTime;
       } else if (isWeekendDay) {
         status = 'Weekend';
       } else if (isHolidayDate) {
         status = 'Holiday';
-      } else {
-        if (!past8AM) {
-          status = 'N/A'; // Pending 08:00 AM cutoff
+      } else if (isToday) {
+        if (!past8AMToday) {
+          status = 'Pending';
         } else {
-          status = 'No Show'; // After 08:00 AM cutoff
+          status = 'No Show';
         }
+      } else {
+        status = 'Pending';
       }
 
       if (status === 'No Show') {

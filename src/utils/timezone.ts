@@ -166,8 +166,7 @@ export function calculateAttendanceStatus(dateObj?: Date): 'Present' | 'Late to 
  */
 export function isPastCutoffTime(dateString: string): boolean {
   const todayString = getUAEDateString();
-  if (dateString < todayString) return true; // Past dates are done
-  if (dateString > todayString) return false; // Future dates not cut off yet
+  if (dateString !== todayString) return false; // Cutoff only applies to today's live day!
 
   const now = new Date();
   const options: Intl.DateTimeFormatOptions = {
