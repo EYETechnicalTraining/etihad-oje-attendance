@@ -11,7 +11,7 @@ import {
 } from '../utils/timezone';
 import { IAttendanceService } from './api';
 import { holidayService } from './hybridHolidayService';
-import { isPendingStatus, isNoShowStatus } from '../utils/statusUtils';
+import { isPendingStatus, isNoShowStatus, normalizeTraineeId } from '../utils/statusUtils';
 
 export class HybridAttendanceService implements IAttendanceService {
   async getDailyAttendance(date: string): Promise<Attendance[]> {
@@ -31,7 +31,7 @@ export class HybridAttendanceService implements IAttendanceService {
   }
 
   async getTraineeAttendanceForDate(traineeId: string, date: string): Promise<Attendance | null> {
-    const normId = (traineeId || '').trim();
+    const normId = normalizeTraineeId(traineeId);
     if (!isSupabaseConfigured || !supabase) return await dexieAttendance.getTraineeAttendanceForDate(normId, date);
 
     try {
@@ -87,12 +87,19 @@ export class HybridAttendanceService implements IAttendanceService {
     traineeId: string,
     authMethod: 'Biometric Passkey (Fingerprint/PIN)' | 'Face Verification Selfie' | 'Password Fallback' | 'WebAuthn/Passkey'
   ): Promise<{ success: boolean; attendance?: Attendance; error?: string }> {
-    const normTraineeId = (traineeId || '').trim();
+    const normTraineeId = normalizeTraineeId(traineeId);
     if (!isSupabaseConfigured || !supabase) return await dexieAttendance.logAttendance(normTraineeId, authMethod);
 
     try {
       const today = getUAEDateString();
-      const existing = await this.getTraineeAttendanceForDate(normTraineeId, today);
+      // Query direct from Supabase to check existing record
+      const { data: existingRows } = await supabase
+        .from('attendance')
+        .select('*')
+        .ilike('trainee_id', normTraineeId)
+        .eq('date', today);
+
+      const existing = (existingRows && existingRows.length > 0) ? existingRows[0] : null;
 
       const isPending = isPendingStatus(existing?.status);
       const isNoShow = isNoShowStatus(existing?.status);
@@ -102,24 +109,27 @@ export class HybridAttendanceService implements IAttendanceService {
         existing &&
         !isPending &&
         !isNoShow &&
-        existing.loginTime &&
-        existing.loginTime !== '-' &&
-        !existing.loginTime.toLowerCase().includes('pending')
+        existing.login_time &&
+        existing.login_time !== '-' &&
+        !existing.login_time.toLowerCase().includes('pending')
       ) {
         return {
           success: false,
-          error: `Attendance already registered for today (${today}) at ${existing.loginTime}.`,
+          error: `Attendance already registered for today (${today}) at ${existing.login_time}.`,
         };
       }
 
       const now = new Date();
       const loginTime = getUAETimeString(now, true);
       const calculatedStatus: AttendanceStatus = calculateAttendanceStatus(now);
-      // If the trainee was previously marked as No Show or Pending after cutoff, checking in registers them as 'Late to Work'!
-      const status: AttendanceStatus = (existing && isNoShow) ? 'Late to Work' : calculatedStatus;
+      const past8AM = isPastCutoffTime(today);
+      // If the trainee was previously marked as No Show or logging in after 8am cutoff, checking in registers them as 'Late to Work'!
+      const status: AttendanceStatus = (isNoShow || past8AM) ? 'Late to Work' : calculatedStatus;
       const createdAt = new Date().toISOString();
 
-      if (existing) {
+      let savedId: number | undefined;
+
+      if (existing && existing.id) {
         const { error } = await supabase
           .from('attendance')
           .update({
@@ -130,61 +140,53 @@ export class HybridAttendanceService implements IAttendanceService {
           .eq('id', existing.id);
 
         if (error) return { success: false, error: error.message };
-
-        // Sync to Dexie
-        try {
-          const localRec = await dexieAttendance.getTraineeAttendanceForDate(normTraineeId, today);
-          if (localRec && localRec.id) {
-            await db.attendance.update(localRec.id, {
-              loginTime,
-              status,
-              authenticationMethod: authMethod,
-            });
-          }
-        } catch {
-          // non-blocking
-        }
-
-        return {
-          success: true,
-          attendance: {
-            ...existing,
-            loginTime,
+        savedId = existing.id;
+      } else {
+        const { data, error } = await supabase
+          .from('attendance')
+          .upsert([{
+            trainee_id: normTraineeId,
+            date: today,
+            login_time: loginTime,
             status,
-            authenticationMethod: authMethod,
-          },
-        };
+            authentication_method: authMethod,
+            created_at: createdAt,
+          }], { onConflict: 'trainee_id,date' })
+          .select();
+
+        if (error || !data || data.length === 0) {
+          return { success: false, error: error?.message || 'Failed to log attendance.' };
+        }
+        savedId = data[0].id;
       }
-
-      const { data, error } = await supabase.from('attendance').insert([{
-        trainee_id: normTraineeId,
-        date: today,
-        login_time: loginTime,
-        status,
-        authentication_method: authMethod,
-        created_at: createdAt,
-      }]).select();
-
-      if (error || !data) return { success: false, error: error?.message || 'Failed to log attendance.' };
 
       // Sync to Dexie locally
       try {
-        await db.attendance.add({
-          traineeId: normTraineeId,
-          date: today,
-          loginTime,
-          status,
-          authenticationMethod: authMethod,
-          createdAt,
-        });
-      } catch (dexieErr) {
+        const localRec = await dexieAttendance.getTraineeAttendanceForDate(normTraineeId, today);
+        if (localRec && localRec.id) {
+          await db.attendance.update(localRec.id, {
+            loginTime,
+            status,
+            authenticationMethod: authMethod,
+          });
+        } else {
+          await db.attendance.add({
+            traineeId: normTraineeId,
+            date: today,
+            loginTime,
+            status,
+            authenticationMethod: authMethod,
+            createdAt,
+          });
+        }
+      } catch {
         // Non-blocking local sync
       }
 
       return {
         success: true,
         attendance: {
-          id: data[0].id,
+          id: savedId,
           traineeId: normTraineeId,
           date: today,
           loginTime,
@@ -224,6 +226,8 @@ export class HybridAttendanceService implements IAttendanceService {
     const attendanceMap = new Map<string, any>();
     (attendanceRecords || []).forEach((a: any) => {
       if (a.trainee_id) {
+        const cleanId = normalizeTraineeId(a.trainee_id);
+        attendanceMap.set(cleanId, a);
         attendanceMap.set(String(a.trainee_id).trim().toUpperCase(), a);
       }
     });
@@ -231,6 +235,8 @@ export class HybridAttendanceService implements IAttendanceService {
     const signOutMap = new Map<string, string>();
     (signOutRecords || []).forEach((s: any) => {
       if (s.trainee_id) {
+        const cleanId = normalizeTraineeId(s.trainee_id);
+        signOutMap.set(cleanId, s.sign_out_time);
         signOutMap.set(String(s.trainee_id).trim().toUpperCase(), s.sign_out_time);
       }
     });
@@ -246,9 +252,10 @@ export class HybridAttendanceService implements IAttendanceService {
 
     for (let i = 0; i < sortedTrainees.length; i++) {
       const trainee = sortedTrainees[i];
-      const normTraineeId = String(trainee.trainee_id || '').trim().toUpperCase();
-      const att = attendanceMap.get(normTraineeId);
-      const signOutTime = signOutMap.get(normTraineeId) || '-';
+      const rawId = String(trainee.trainee_id || '').trim();
+      const normTraineeId = normalizeTraineeId(rawId);
+      const att = attendanceMap.get(normTraineeId) || attendanceMap.get(rawId.toUpperCase());
+      const signOutTime = signOutMap.get(normTraineeId) || signOutMap.get(rawId.toUpperCase()) || '-';
 
       let status: AttendanceStatus = 'Pending';
       let loginTime = '-';
@@ -346,7 +353,7 @@ export class HybridAttendanceService implements IAttendanceService {
     prevStatus?: AttendanceStatus,
     existingLoginTime?: string
   ): Promise<{ success: boolean; error?: string }> {
-    const normTraineeId = (traineeId || '').trim();
+    const normTraineeId = normalizeTraineeId(traineeId);
     if (!isSupabaseConfigured || !supabase) {
       return await dexieAttendance.updateTraineeAttendanceStatus(normTraineeId, date, newStatus, prevStatus, existingLoginTime);
     }
@@ -369,7 +376,7 @@ export class HybridAttendanceService implements IAttendanceService {
         try {
           const allSignOuts = await db.signOuts.where('date').equals(date).toArray();
           const toDelete = allSignOuts.filter(
-            (s) => String(s.traineeId).trim().toUpperCase() === normTraineeId.toUpperCase()
+            (s) => normalizeTraineeId(s.traineeId) === normTraineeId
           );
           for (const s of toDelete) {
             if (s.id) await db.signOuts.delete(s.id);
@@ -398,7 +405,7 @@ export class HybridAttendanceService implements IAttendanceService {
         computedLoginTime = `Manual (${newStatus})`;
       }
 
-      if (remoteExisting) {
+      if (remoteExisting && remoteExisting.id) {
         const { error } = await supabase
           .from('attendance')
           .update({
@@ -411,17 +418,17 @@ export class HybridAttendanceService implements IAttendanceService {
       } else {
         const createdAt = new Date().toISOString();
 
-        const { error } = await supabase.from('attendance').insert([{
+        const { error } = await supabase.from('attendance').upsert([{
           trainee_id: normTraineeId,
           date,
           login_time: computedLoginTime,
           status: newStatus,
           authentication_method: 'Manual Override',
           created_at: createdAt,
-        }]);
+        }], { onConflict: 'trainee_id,date' });
 
         if (error) {
-          // If insert fails due to race condition or constraint, fallback to update by trainee_id and date
+          // If upsert fails fallback to update by trainee_id and date
           const { error: updateError } = await supabase
             .from('attendance')
             .update({

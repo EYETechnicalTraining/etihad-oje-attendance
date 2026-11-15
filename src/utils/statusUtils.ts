@@ -17,3 +17,20 @@ export const isNoShowStatus = (status?: string | null): boolean => {
   const s = status.toString().trim().toLowerCase();
   return s === 'no show' || s === 'noshow' || s === 'ns' || s.includes('no show');
 };
+
+/**
+ * Normalizes trainee staff ID / number:
+ * - Upper case, trimmed
+ * - Strips Staff #, #, EY- prefixes
+ * - Removes spaces (e.g. EYETT 106 -> EYETT106)
+ * - Removes leading zeros after prefix (e.g. EYETT099 -> EYETT99)
+ */
+export const normalizeTraineeId = (id?: string | null): string => {
+  if (!id) return '';
+  let str = id.toString().trim().toUpperCase();
+  str = str.replace(/^STAFF\s*#?\s*/i, '').replace(/^#\s*/, '');
+  str = str.replace(/^EY-/, '');
+  str = str.replace(/\s+/g, '');
+  str = str.replace(/^EYETT0+([1-9]\d*)$/, 'EYETT$1');
+  return str;
+};
