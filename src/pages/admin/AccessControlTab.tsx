@@ -50,7 +50,7 @@ export const AccessControlTab: React.FC<AccessControlTabProps> = ({ currentUser,
     loadData();
     const interval = setInterval(() => {
       loadData();
-    }, 5000); // 5-second seamless auto-refresh
+    }, 1000); // 1-second seamless auto-refresh
     return () => clearInterval(interval);
   }, [isMaster, refreshTrigger]);
 

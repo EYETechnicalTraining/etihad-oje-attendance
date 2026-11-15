@@ -94,7 +94,7 @@ export const AuditBackupTab: React.FC<AuditBackupTabProps> = ({ currentUser, ref
     // ONLY refresh audit logs in background, NEVER overwrite user form inputs!
     const interval = setInterval(() => {
       refreshAuditLogs();
-    }, 5000);
+    }, 1000);
 
     return () => clearInterval(interval);
   }, []);

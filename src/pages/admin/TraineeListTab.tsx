@@ -62,7 +62,7 @@ export const TraineeListTab: React.FC<TraineeListTabProps> = ({ currentUser, ref
     loadData();
     const interval = setInterval(() => {
       loadData();
-    }, 5000); // 5-second seamless auto-refresh
+    }, 1000); // 1-second seamless auto-refresh
     return () => clearInterval(interval);
   }, [refreshTrigger]);
 

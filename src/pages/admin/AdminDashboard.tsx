@@ -51,18 +51,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ currentUser }) =
     return () => window.removeEventListener('hashchange', handleHashChange);
   }, []);
 
-  // Auto-refresh countdown timer: 5... 4... 3... 2... 1... Refresh
+  // 1-second live auto-refresh timer
   useEffect(() => {
     const timer = setInterval(() => {
-      setCountdown((prev) => {
-        if (prev <= 1) {
-          setIsAutoRefreshing(true);
-          setRefreshKey((k) => k + 1);
-          setTimeout(() => setIsAutoRefreshing(false), 900);
-          return 5;
-        }
-        return prev - 1;
-      });
+      setRefreshKey((k) => k + 1);
+      setIsAutoRefreshing(true);
+      setTimeout(() => setIsAutoRefreshing(false), 300);
     }, 1000);
 
     return () => clearInterval(timer);
@@ -71,8 +65,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ currentUser }) =
   const handleManualRefresh = () => {
     setIsRefreshing(true);
     setRefreshKey((prev) => prev + 1);
-    setCountdown(5);
-    setTimeout(() => setIsRefreshing(false), 400);
+    setTimeout(() => setIsRefreshing(false), 300);
   };
 
   return (
@@ -139,7 +132,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ currentUser }) =
               justifyContent: 'center',
               transition: 'all 0.2s ease',
             }}
-            title="Auto-refresh countdown in seconds (5... 4... 3... 2... 1... Refresh)"
+            title="Live 1-second auto-refresh"
           >
             <span
               style={{
@@ -153,7 +146,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ currentUser }) =
               }}
             ></span>
             <span>
-              {isAutoRefreshing ? 'Refreshing...' : `Auto-refresh: ${countdown}...`}
+              {isAutoRefreshing ? 'Updating...' : 'Live (1s Auto-Refresh)'}
             </span>
           </span>
 

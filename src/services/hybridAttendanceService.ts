@@ -14,6 +14,15 @@ import { holidayService } from './hybridHolidayService';
 import { isPendingStatus, isNoShowStatus, normalizeTraineeId } from '../utils/statusUtils';
 
 export class HybridAttendanceService implements IAttendanceService {
+  private _cachedMeta: {
+    trainees: any[];
+    allocations: any[];
+    taskCounts: any[];
+    users: any[];
+    passkeys: any[];
+    timestamp: number;
+  } | null = null;
+
   async getDailyAttendance(date: string): Promise<Attendance[]> {
     if (!isSupabaseConfigured || !supabase) return await dexieAttendance.getDailyAttendance(date);
 
@@ -203,13 +212,38 @@ export class HybridAttendanceService implements IAttendanceService {
   async getTraineeLogsForDate(targetDate: string): Promise<TraineeLogSummary[]> {
     if (!isSupabaseConfigured || !supabase) return await dexieAttendance.getTraineeLogsForDate(targetDate);
 
-    const { data: allTrainees } = await supabase.from('trainees').select('*');
-    const { data: attendanceRecords } = await supabase.from('attendance').select('*').eq('date', targetDate);
-    const { data: signOutRecords } = await supabase.from('sign_outs').select('*').eq('date', targetDate);
-    const { data: allAllocations } = await supabase.from('allocations').select('*');
-    const { data: allTaskCounts } = await supabase.from('task_counts').select('*');
-    const { data: allUsers } = await supabase.from('users').select('*');
-    const { data: allPasskeys } = await supabase.from('passkey_credentials').select('*');
+    const now = Date.now();
+    if (!this._cachedMeta || now - this._cachedMeta.timestamp > 10000) {
+      const [tRes, alRes, tcRes, uRes, pkRes] = await Promise.all([
+        supabase.from('trainees').select('*'),
+        supabase.from('allocations').select('*'),
+        supabase.from('task_counts').select('*'),
+        supabase.from('users').select('*'),
+        supabase.from('passkey_credentials').select('*'),
+      ]);
+      this._cachedMeta = {
+        trainees: tRes.data || [],
+        allocations: alRes.data || [],
+        taskCounts: tcRes.data || [],
+        users: uRes.data || [],
+        passkeys: pkRes.data || [],
+        timestamp: now,
+      };
+    }
+
+    const allTrainees = this._cachedMeta.trainees;
+    const allAllocations = this._cachedMeta.allocations;
+    const allTaskCounts = this._cachedMeta.taskCounts;
+    const allUsers = this._cachedMeta.users;
+    const allPasskeys = this._cachedMeta.passkeys;
+
+    // ALWAYS fetch fresh attendance and sign outs for targetDate in real-time
+    const [attRes, soRes] = await Promise.all([
+      supabase.from('attendance').select('*').eq('date', targetDate),
+      supabase.from('sign_outs').select('*').eq('date', targetDate),
+    ]);
+    const attendanceRecords = attRes.data || [];
+    const signOutRecords = soRes.data || [];
 
     if (!allTrainees) return [];
 

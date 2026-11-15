@@ -92,7 +92,7 @@ export const TraineeLogsTab: React.FC<TraineeLogsTabProps> = ({ refreshTrigger }
   useEffect(() => {
     loadLogs(selectedDate);
 
-    // Auto-refresh attendance logs seamlessly every 5 seconds in background
+    // Auto-refresh attendance logs seamlessly every 1 second in background (Real-time live sync)
     const interval = setInterval(() => {
       loadLogs(selectedDate);
 
@@ -102,7 +102,7 @@ export const TraineeLogsTab: React.FC<TraineeLogsTabProps> = ({ refreshTrigger }
           console.warn('Automated No Show check error:', e)
         );
       }
-    }, 5000);
+    }, 1000);
 
     return () => clearInterval(interval);
   }, [selectedDate, refreshTrigger]);
@@ -196,6 +196,9 @@ export const TraineeLogsTab: React.FC<TraineeLogsTabProps> = ({ refreshTrigger }
       delete next[traineeId];
       return next;
     });
+
+    // Instant update: Reload fresh logs immediately as soon as confirmed/saved
+    await loadLogs(selectedDate);
 
     // 3. Dispatch notification email ONLY to this one trainee if Late to Work or No Show
     const targetTrainee = log;

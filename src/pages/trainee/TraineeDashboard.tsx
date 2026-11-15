@@ -112,7 +112,7 @@ export const TraineeDashboard: React.FC<TraineeDashboardProps> = ({ currentUser 
     loadData();
     const interval = setInterval(() => {
       loadData();
-    }, 5000); // 5-second seamless auto-refresh
+    }, 1000); // 1-second live auto-refresh
     return () => clearInterval(interval);
   }, [currentUser]);
 
@@ -178,6 +178,7 @@ export const TraineeDashboard: React.FC<TraineeDashboardProps> = ({ currentUser 
         type: 'success',
         text: `Attendance Registered! Time: ${logRes.attendance.loginTime} • Status: ${logRes.attendance.status}`,
       });
+      await loadData(); // Instant reload as soon as confirmed!
 
       // Automated Late to Work Email dispatch
       if (logRes.attendance.status === 'Late to Work' && trainee.email) {
